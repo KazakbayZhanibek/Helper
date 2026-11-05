@@ -285,7 +285,7 @@ def execute_budgeted_call(provider, *, job, context, call_key, invoke, session=N
     session = session or job
     reservation = reserve(provider, job=job, session=session, call_key=call_key, frames_count=frames_count)
     try:
-        context.check()
+        getattr(context, 'check_dispatch', context.check)()
     except BaseException:
         release_unstarted(reservation)
         raise

@@ -21,7 +21,7 @@ def cleanup_visual_sessions(*, limit=50):
             if session.state == 'active' and session.expires_at <= now:
                 session.state = 'expired'
                 session.save(update_fields=['state', 'updated_at'])
-                jobs = ProcessingJob.objects.filter(organization_id=session.organization_id, payload__visual_session_id=str(session.id))
+                jobs = ProcessingJob.objects.filter(organization_id=session.organization_id, visual_session_id=session.id)
                 jobs.filter(state='queued').update(state='cancelled', stage='cancelled', cancel_requested=True, retryable=False, finished_at=now)
                 jobs.filter(state='running').update(cancel_requested=True)
                 expired += 1
@@ -31,7 +31,7 @@ def cleanup_visual_sessions(*, limit=50):
             source = VisualSession.objects.get(pk=session_id)
             Organization.objects.select_for_update().get(pk=source.organization_id)
             session = VisualSession.objects.select_for_update().get(pk=session_id)
-            if session.frames_purged_at or session.proposals.filter(applied_at__isnull=False).exists() or ProcessingJob.objects.filter(payload__visual_session_id=str(session.id), state__in=['queued', 'running']).exists():
+            if session.frames_purged_at or session.proposals.filter(applied_at__isnull=False).exists() or ProcessingJob.objects.filter(visual_session_id=session.id, state__in=['queued', 'running']).exists():
                 continue
             paths = [safe_frame_path(frame.storage_key) for frame in session.frames.all()]
             session.frames.all().delete()

@@ -265,7 +265,6 @@ def persist_frame(session, *, sequence, timestamp_ms, coverage_start_ms, coverag
         raise
 
 
-@transaction.atomic
 def receive_frame(member, session_id, stream, *, sequence, timestamp_ms, key):
     if not key or len(key) > 128:
         s.fail('VALIDATION_ERROR', 'Для кадра нужен Idempotency-Key до 128 символов.')
@@ -276,15 +275,32 @@ def receive_frame(member, session_id, stream, *, sequence, timestamp_ms, key):
     if len(raw) > LIMITS['max_frame_bytes']:
         s.fail('FRAME_TOO_LARGE', 'Максимальный размер кадра — 512 KiB.', 413)
     digest = hashlib.sha256(raw).hexdigest()
-    Organization.objects.select_for_update().get(pk=member.organization_id)
-    session = session_for(member, session_id, lock=True, owner=True)
+    session = session_for(member, session_id, owner=True)
+    previous = _check_frame_receipt(session, sequence, timestamp_ms, key, digest)
+    if previous:
+        return frame_data(previous), 200
+    # Decode before holding any organization/session row lock. Re-check all
+    # mutable state under the lock afterwards (including a concurrent retry).
+    content, width, height = decoded_jpeg(raw)
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=member.organization_id)
+        member = s.membership(member.user, member.organization_id, s.WRITERS)
+        session = session_for(member, session_id, lock=True, owner=True)
+        previous = _check_frame_receipt(session, sequence, timestamp_ms, key, digest)
+        if previous:
+            return frame_data(previous), 200
+        frame = persist_frame(session, sequence=sequence, timestamp_ms=timestamp_ms, coverage_start_ms=timestamp_ms, coverage_end_ms=min(600000, timestamp_ms + 1000), content=content, width=width, height=height, idempotency_key=key, request_sha256=digest)
+        return frame_data(frame), 201
+
+
+def _check_frame_receipt(session, sequence, timestamp_ms, key, digest):
     if session.mode != 'live':
         s.fail('INVALID_STATE', 'Передача кадров доступна только для живой камеры.', 409)
     previous = session.frames.filter(idempotency_key=key).first()
     if previous:
         if previous.sequence != sequence or previous.timestamp_ms != timestamp_ms or previous.request_sha256 != digest:
             s.fail('IDEMPOTENCY_KEY_REUSED', 'Ключ уже использован для другого кадра.', 409)
-        return frame_data(previous), 200
+        return previous
     require_active(session)
     latest = session.frames.order_by('-sequence').first()
     if sequence != (latest.sequence + 1 if latest else 1):
@@ -294,9 +310,7 @@ def receive_frame(member, session_id, stream, *, sequence, timestamp_ms, key):
     elapsed = (timezone.now() - session.created_at).total_seconds() * 1000
     if timestamp_ms > elapsed + 5000:
         s.fail('INVALID_FRAME_TIME', 'Время кадра выходит за пределы текущей записи.', 422)
-    content, width, height = decoded_jpeg(raw)
-    frame = persist_frame(session, sequence=sequence, timestamp_ms=timestamp_ms, coverage_start_ms=timestamp_ms, coverage_end_ms=min(600000, timestamp_ms + 1000), content=content, width=width, height=height, idempotency_key=key, request_sha256=digest)
-    return frame_data(frame), 201
+    return None
 
 
 @transaction.atomic
@@ -313,7 +327,7 @@ def analyze_live(member, session_id, data):
     frames = list(session.frames.order_by('-sequence')[:12])
     if len(frames) < 2:
         s.fail('NO_VISUAL_FRAMES', 'Для наблюдения действий нужны минимум два кадра с камеры.', 422)
-    if session.analysis_calls >= 60 or ProcessingJob.objects.filter(payload__visual_session_id=str(session.id), kind='analyze_live').count() >= 60:
+    if session.analysis_calls >= 60 or ProcessingJob.objects.filter(visual_session_id=session.id, kind='analyze_live').count() >= 60:
         s.fail('VISUAL_CALL_LIMIT', 'Достигнут лимит 60 анализов для одного сеанса.', 429)
     ids = [str(frame.id) for frame in reversed(frames)]
     payload = {'visual_session_id': str(session.id), 'frame_ids': ids, 'visual_protocol': session.analysis_budget.get('visual_protocol', '2')}
@@ -396,9 +410,9 @@ def cancel_session(member, session_id):
     if session.state == 'active':
         session.state = 'cancelled'
         session.save(update_fields=['state', 'updated_at'])
-    queued = ProcessingJob.objects.filter(organization=member.organization, payload__visual_session_id=str(session.id), kind__in=['analyze_video', 'analyze_live'], state='queued')
+    queued = ProcessingJob.objects.filter(organization=member.organization, visual_session_id=session.id, kind__in=['analyze_video', 'analyze_live'], state='queued')
     queued.update(state='cancelled', stage='cancelled', cancel_requested=True, retryable=False, finished_at=timezone.now())
-    ProcessingJob.objects.filter(organization=member.organization, payload__visual_session_id=str(session.id), state='running').update(cancel_requested=True)
+    ProcessingJob.objects.filter(organization=member.organization, visual_session_id=session.id, state='running').update(cancel_requested=True)
     s.audit(member, 'visual_session.cancelled', session)
     return session_data(session)
 

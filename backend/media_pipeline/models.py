@@ -42,6 +42,8 @@ class ProcessingJob(TenantEntity):
     attempts = models.PositiveSmallIntegerField(default=0)
     max_attempts = models.PositiveSmallIntegerField(default=3)
     payload = models.JSONField(default=dict)
+    # Indexed lookup only; tenant/source/owner checks remain in visual_drafts.
+    visual_session_id = models.UUIDField(null=True, blank=True, db_index=True)
     result = models.JSONField(default=dict)
     input_hash = models.CharField(max_length=64, default='', blank=True)
     config_version = models.CharField(max_length=64, default='v1')

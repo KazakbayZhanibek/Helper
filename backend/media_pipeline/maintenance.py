@@ -19,6 +19,8 @@ from .uploads import expire_uploads
 MAX_TEMP_ENTRIES = 500
 MAX_TEMP_BATCHES = 50
 MAX_TEMP_FILES = 12
+MAX_DERIVED_CANDIDATES = 50
+MAX_DERIVED_ENTRIES = 500
 
 
 def _uuid_name(name):
@@ -158,21 +160,63 @@ def maintenance_tick():
         directory = root / 'quarantine' / str(upload.organization_id) / str(upload.id)
         if directory.is_dir() and not directory.is_symlink() and directory.resolve().is_relative_to(root):
             shutil.rmtree(directory)
+    cleanup_derived_files(root, now=now)
+
+
+def cleanup_derived_files(root, *, now):
+    """Two reference queries per bounded batch instead of two per directory.
+
+    Derived directories contain a unique attempt token. New attempts always use
+    a new token; the 24-hour age check excludes directories being produced now.
+    All four asset paths and all active leases protect a candidate.
+    """
     derived = root / 'derived'
     if not derived.is_dir():
-        return
+        return 0
+    cutoff = (now - timedelta(hours=24)).timestamp()
+    candidates = []
     # Fixed-depth UUID tree: no user-controlled directory names and no recursive symlink traversal.
-    for directory in derived.glob('*/*/*'):
-        if not directory.is_dir() or directory.is_symlink() or not directory.resolve().is_relative_to(root) or directory.stat().st_mtime >= cutoff:
+    for visited, directory in enumerate(derived.glob('*/*/*'), 1):
+        if visited > MAX_DERIVED_ENTRIES or len(candidates) >= MAX_DERIVED_CANDIDATES:
+            break
+        try:
+            parts = directory.relative_to(derived).parts
+            if (not all(_uuid_name(part) for part in parts) or not directory.is_dir()
+                    or any(path.is_symlink() for path in [derived, directory.parent.parent, directory.parent, directory])
+                    or not directory.resolve().is_relative_to(root)):
+                continue
+            info = directory.stat()
+            if info.st_mtime >= cutoff:
+                continue
+            candidates.append((directory, directory.relative_to(root).as_posix() + '/',
+                               uuid.UUID(directory.name), (info.st_dev, info.st_ino)))
+        except OSError:
             continue
-        key_prefix = directory.relative_to(root).as_posix() + '/'
-        if MediaAsset.objects.filter(storage_key__startswith=key_prefix).exists():
+    if not candidates:
+        return 0
+    fields = ('storage_key', 'original_key', 'audio_key', 'thumbnail_key')
+    references = Q()
+    for _, prefix, _, _ in candidates:
+        for field in fields:
+            references |= Q(**{field + '__startswith': prefix})
+    protected = set()
+    for paths in MediaAsset.objects.filter(references).values_list(*fields).iterator(chunk_size=500):
+        for _, prefix, _, _ in candidates:
+            if any(path and path.startswith(prefix) for path in paths):
+                protected.add(prefix)
+    tokens = set(ProcessingJob.objects.filter(lease_token__in=[row[2] for row in candidates],
+        state='running', lease_expires_at__gt=now).values_list('lease_token', flat=True))
+    removed = 0
+    for directory, prefix, token, identity in candidates:
+        if prefix in protected or token in tokens:
             continue
         try:
-            import uuid
-            token = uuid.UUID(directory.name)
-        except ValueError:
+            info = directory.lstat()
+            if (not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != identity
+                    or info.st_mtime >= cutoff):
+                continue
+            shutil.rmtree(directory)
+            removed += 1
+        except FileNotFoundError:
             continue
-        if ProcessingJob.objects.filter(lease_token=token, state='running', lease_expires_at__gt=now).exists():
-            continue
-        shutil.rmtree(directory)
+    return removed

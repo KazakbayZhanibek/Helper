@@ -24,6 +24,7 @@ class VisualSession(TenantEntity):
     analysis_budget = models.JSONField(default=dict)
 
     class Meta:
+        indexes = [models.Index(fields=['state', 'expires_at'], name='visual_session_state_expiry')]
         constraints = [models.CheckConstraint(condition=Q(mode__in=['live', 'upload']), name='visual_session_mode'), models.CheckConstraint(condition=Q(state__in=['active', 'completed', 'cancelled', 'expired']), name='visual_session_state'), models.UniqueConstraint(fields=['instruction'], condition=Q(mode='live', state='active'), name='one_active_live_session')]
 
 

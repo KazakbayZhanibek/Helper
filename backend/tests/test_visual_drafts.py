@@ -84,7 +84,7 @@ def make_proposal(team, draft, mode='upload'):
 
 
 def job_for(team, session, frames):
-    return ProcessingJob.objects.create(organization=team.org, instruction=session.instruction, asset=session.asset, requested_by=team.users['author'], kind='analyze_live' if session.mode == 'live' else 'analyze_video', payload={'visual_session_id': str(session.id), 'frame_ids': [str(frame.id) for frame in frames]})
+    return ProcessingJob.objects.create(organization=team.org, instruction=session.instruction, asset=session.asset, requested_by=team.users['author'], kind='analyze_live' if session.mode == 'live' else 'analyze_video', visual_session_id=session.id, payload={'visual_session_id': str(session.id), 'frame_ids': [str(frame.id) for frame in frames]})
 
 
 def fake_provider(monkeypatch, *, callback=None):

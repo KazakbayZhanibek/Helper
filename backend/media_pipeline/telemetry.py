@@ -11,7 +11,7 @@ import time
 
 
 STAGES = frozenset({
-    'frame_extraction', 'frame_persistence', 'frame_reading', 'model_request',
+    'frame_extraction', 'frame_decode', 'frame_persistence', 'frame_reading', 'model_request',
     'validation', 'aggregation', 'visual_review_request',
 })
 COUNTERS = frozenset({'prepared_frames', 'reused_frame_batches', 'completed_windows', 'completed_visual_reviews'})

@@ -41,11 +41,14 @@ def enqueue_job(member, instruction, kind, payload=None, input_hash=''):
         s.fail('NOT_FOUND', 'Источник не найден.', 404)
     if kind not in ('prepare_media', 'transcribe', 'draft_steps', 'analyze_video', 'analyze_live'):
         s.fail('VALIDATION_ERROR', 'Неизвестная задача.')
-    if kind == 'analyze_live':
+    visual_session_id = None
+    if kind in ('analyze_live', 'analyze_video'):
         try:
-            uuid.UUID(str((payload or {}).get('visual_session_id')))
+            visual_session_id = uuid.UUID(str((payload or {}).get('visual_session_id')))
         except (ValueError, TypeError, AttributeError):
-            s.fail('VALIDATION_ERROR', 'Для анализа камеры нужна активная видеосессия.')
+            if kind == 'analyze_live':
+                s.fail('VALIDATION_ERROR', 'Для анализа камеры нужна активная видеосессия.')
+    if kind == 'analyze_live':
         # Camera evidence belongs to the session even when the instruction also has an uploaded source.
         asset = None
     else:
@@ -60,7 +63,8 @@ def enqueue_job(member, instruction, kind, payload=None, input_hash=''):
             s.fail('JOB_ALREADY_RUNNING', 'Для этого источника уже выполняется задача.', 409)
         return existing
     return ProcessingJob.objects.create(organization=member.organization, instruction=instruction,
-        asset=asset, requested_by=member.user, kind=kind, payload=payload or {}, input_hash=input_hash)
+        asset=asset, requested_by=member.user, kind=kind, payload=payload or {}, input_hash=input_hash,
+        visual_session_id=visual_session_id)
 
 
 def job_for(member, job_id, lock=False):

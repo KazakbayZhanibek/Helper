@@ -77,6 +77,8 @@ def active_session(job, *, lock=False, allow_completed=False):
         session_id = uuid.UUID(str(job.payload.get('visual_session_id', '')))
     except (ValueError, TypeError):
         raise ProcessingFailure('VISUAL_SESSION_INVALID', 'Не удалось определить сеанс анализа.') from None
+    if job.visual_session_id is not None and job.visual_session_id != session_id:
+        raise ProcessingFailure('VISUAL_SESSION_INVALID', 'Сеанс задания не соответствует сохранённой связи.')
     query = VisualSession.objects.select_related('organization', 'instruction', 'asset').filter(id=session_id, organization_id=job.organization_id, instruction_id=job.instruction_id, created_by_id=job.requested_by_id, instruction__lifecycle='active', organization__status='active', consent_images=True, frames_purged_at__isnull=True)
     if lock:
         query = query.select_for_update(of=('self',))
@@ -158,6 +160,15 @@ def uploaded_frames(job, session, context, window=None):
                 raise ProcessingFailure('INSUFFICIENT_VISUAL_FRAMES', 'Для наблюдения действия нужны минимум два разных кадра.')
             timestamps = [frame.timestamp_ms for frame in samples]
             boundaries = [start_ms, *[(a + b) // 2 for a, b in zip(timestamps, timestamps[1:])], end_ms]
+            prepared = []
+            with measured(context, 'frame_decode'):
+                for index, sample in enumerate(samples):
+                    context.check()
+                    if boundaries[index + 1] <= boundaries[index]:
+                        raise ProcessingFailure('VISUAL_TIMING_INVALID', 'Кадры слишком близки для проверяемого интервала.')
+                    raw = sample.path.read_bytes()
+                    content, width, height = decoded_jpeg(raw, max_input_bytes=1024 * 1024)
+                    prepared.append((content, width, height, hashlib.sha256(raw).hexdigest()))
             with measured(context, 'frame_persistence'), transaction.atomic():
                 Organization.objects.select_for_update().get(pk=job.organization_id)
                 context.commit_guard()
@@ -170,11 +181,8 @@ def uploaded_frames(job, session, context, window=None):
                 frames = []
                 base_sequence = current.frames.aggregate(value=Max('sequence'))['value'] or 0
                 for index, sample in enumerate(samples):
-                    if boundaries[index + 1] <= boundaries[index]:
-                        raise ProcessingFailure('VISUAL_TIMING_INVALID', 'Кадры слишком близки для проверяемого интервала.')
-                    raw = sample.path.read_bytes()
-                    content, width, height = decoded_jpeg(raw, max_input_bytes=1024 * 1024)
-                    frame = persist_frame(current, sequence=base_sequence + index + 1, timestamp_ms=sample.timestamp_ms, coverage_start_ms=boundaries[index], coverage_end_ms=boundaries[index + 1], content=content, width=width, height=height, idempotency_key=f'window-{window.id}-{index + 1}' if window else f'upload-{index + 1}', request_sha256=hashlib.sha256(raw).hexdigest(), frame_id=uuid.UUID(str(sample.id)))
+                    content, width, height, digest = prepared[index]
+                    frame = persist_frame(current, sequence=base_sequence + index + 1, timestamp_ms=sample.timestamp_ms, coverage_start_ms=boundaries[index], coverage_end_ms=boundaries[index + 1], content=content, width=width, height=height, idempotency_key=f'window-{window.id}-{index + 1}' if window else f'upload-{index + 1}', request_sha256=digest, frame_id=uuid.UUID(str(sample.id)))
                     saved_paths.append(safe_frame_path(frame.storage_key))
                     frames.append(frame)
                 if window:

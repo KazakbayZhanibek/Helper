@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Exists, F, OuterRef
 from django.utils import timezone
 
 from core.models import MediaAsset, Membership, Organization
@@ -21,6 +21,7 @@ from .telemetry import AttemptMetrics, with_metrics
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 90
 HEARTBEAT_SECONDS = 15
+CHECK_SECONDS = 0.5
 
 
 def _terminate(process):
@@ -48,7 +49,9 @@ class JobContext:
     def __init__(self, job):
         self.job_id = job.id
         self.lease_token = job.lease_token
-        self.last_heartbeat = 0.0
+        self.last_heartbeat = time.monotonic()
+        self.last_check = None
+        self.checked_lease_expires_at = None
         self.metrics = AttemptMetrics.for_job(job) if job.kind in ('analyze_video', 'analyze_live') else None
 
     def _assert_current(self, job):
@@ -62,14 +65,34 @@ class JobContext:
             raise Cancelled()
 
     def check(self):
-        with transaction.atomic():
-            job = ProcessingJob.objects.select_for_update(of=('self',)).select_related('organization', 'instruction', 'asset').get(pk=self.job_id)
-            self._assert_current(job)
-            if time.monotonic() - self.last_heartbeat >= HEARTBEAT_SECONDS:
-                now = timezone.now()
-                job.heartbeat_at, job.lease_expires_at = now, now + timedelta(seconds=LEASE_SECONDS)
-                job.save(update_fields=['heartbeat_at', 'lease_expires_at', 'updated_at'])
-                self.last_heartbeat = time.monotonic()
+        """Cheap polling; mutations and outbound work have uncached guards."""
+        tick, now = time.monotonic(), timezone.now()
+        if (self.last_check is not None and tick - self.last_check < CHECK_SECONDS
+                and self.checked_lease_expires_at and now < self.checked_lease_expires_at):
+            return
+        permitted = Membership.objects.filter(organization_id=OuterRef('organization_id'),
+            user_id=OuterRef('requested_by_id'), is_active=True, user__is_active=True,
+            role__in=['admin', 'author', 'reviewer'])
+        current = ProcessingJob.objects.filter(pk=self.job_id, state='running',
+            lease_token=self.lease_token, cancel_requested=False, lease_expires_at__gt=now,
+            organization__status='active', instruction__lifecycle='active').exclude(
+            asset__status='deleted').filter(Exists(permitted))
+        expires_at = current.values_list('lease_expires_at', flat=True).first()
+        if expires_at is None:
+            raise Cancelled()
+        if tick - self.last_heartbeat >= HEARTBEAT_SECONDS:
+            # Conditional update cannot revive a cancelled/reclaimed/expired
+            # attempt between the read and heartbeat. No explicit row lock.
+            expires_at = now + timedelta(seconds=LEASE_SECONDS)
+            if current.update(heartbeat_at=now, lease_expires_at=expires_at, updated_at=now) != 1:
+                raise Cancelled()
+            self.last_heartbeat = tick
+        self.last_check, self.checked_lease_expires_at = tick, expires_at
+
+    def check_dispatch(self):
+        """Never use cached permission/cancellation state to start external work."""
+        self.last_check = None
+        self.check()
 
     def commit_guard(self):
         """Call inside transaction.atomic(); the row lock fences stale/cancelled attempts until commit."""
@@ -87,7 +110,7 @@ class JobContext:
             raise ValueError('Commands must be argument arrays')
         if input_bytes is not None and (not isinstance(input_bytes, bytes) or len(input_bytes) > 262144):
             raise ValueError('Process input must be bounded bytes')
-        self.check()
+        self.check_dispatch()
         started = time.monotonic()
         with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr, tempfile.TemporaryFile() as stdin:
             if input_bytes is not None:
@@ -127,7 +150,7 @@ class JobContext:
         receipts may settle independently on their own connection: cancellation
         cannot undo an already dispatched external request or its cost.
         """
-        self.check()
+        self.check_dispatch()
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(function)
         started = time.monotonic()
