@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:master-experience:visual-action-evidence:v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "language", "observations", "gaps", "warnings"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["3"]},
+    "language": {"type": "string", "enum": ["ru", "kk", "mixed"]},
+    "observations": {
+      "type": "array", "maxItems": 12,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "kind", "subject", "title", "before", "before_frame_id", "movement", "action_frame_ids", "after", "after_frame_id", "evidence_frame_ids"],
+        "properties": {
+          "id": {"type": "string", "enum": ["o1", "o2", "o3", "o4", "o5", "o6", "o7", "o8", "o9", "o10", "o11", "o12"]},
+          "kind": {"type": "string", "enum": ["action", "state"]},
+          "subject": {"type": "string", "minLength": 1, "maxLength": 120},
+          "title": {"type": "string", "minLength": 3, "maxLength": 120},
+          "before": {"type": ["string", "null"], "minLength": 1, "maxLength": 240},
+          "before_frame_id": {"type": ["string", "null"], "format": "uuid"},
+          "movement": {"type": ["string", "null"], "minLength": 1, "maxLength": 800},
+          "action_frame_ids": {"type": "array", "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}},
+          "after": {"type": ["string", "null"], "minLength": 1, "maxLength": 240},
+          "after_frame_id": {"type": ["string", "null"], "format": "uuid"},
+          "evidence_frame_ids": {"type": "array", "minItems": 2, "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}}
+        }
+      }
+    },
+    "gaps": {
+      "type": "array", "maxItems": 8,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["reason", "description", "evidence_frame_ids"],
+        "properties": {
+          "reason": {"type": "string", "enum": ["occluded", "sampling_gap", "cut", "outside_recording", "unclear_action"]},
+          "description": {"type": "string", "minLength": 1, "maxLength": 600},
+          "evidence_frame_ids": {"type": "array", "minItems": 2, "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}}
+        }
+      }
+    },
+    "warnings": {
+      "type": "array", "maxItems": 30,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "enum": ["insufficient_evidence", "uncertain_action", "missing_parameters", "occluded_view", "sampled_frames", "approximate_timing", "partial_video", "overlapping_ranges", "preliminary_live"]},
+          "message": {"type": "string", "minLength": 1, "maxLength": 600}
+        }
+      }
+    }
+  }
+}

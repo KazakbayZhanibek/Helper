@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "purpose": "Four-source exploratory A/B: fixed model and image allowance; no claim of general accuracy",
+  "max_model_calls": 8,
+  "clips": [
+    {
+      "id": "screwdriving",
+      "path": "../artifacts/test-media/real-benchmark/craft/drill.mp4",
+      "kind": "real_work_process",
+      "source_url": "https://www.pexels.com/video/a-man-drilling-a-screw-into-the-wood-panel-4038248/",
+      "author": "Martina Tomšič",
+      "license_url": "https://www.pexels.com/license/",
+      "rights_confirmed": true,
+      "events": []
+    },
+    {
+      "id": "sewing",
+      "path": "../artifacts/test-media/real-benchmark/craft/sewing.mp4",
+      "kind": "real_work_process",
+      "source_url": "https://www.pexels.com/video/female-hands-using-sewing-machine-6459959/",
+      "author": "Pavel Danilyuk",
+      "license_url": "https://www.pexels.com/license/",
+      "rights_confirmed": true,
+      "events": []
+    },
+    {
+      "id": "chopping",
+      "path": "../artifacts/test-media/real-benchmark/food/chopping-720p.mp4",
+      "kind": "real_work_process",
+      "source_url": "https://www.pexels.com/video/person-chopping-vegetables-7009957/",
+      "author": "Taryn Elliott",
+      "license_url": "https://www.pexels.com/license/",
+      "rights_confirmed": true,
+      "events": []
+    },
+    {
+      "id": "kneading",
+      "path": "../artifacts/test-media/real-benchmark/food/kneading-720p.mp4",
+      "kind": "real_work_process",
+      "source_url": "https://www.pexels.com/video/a-person-kneading-the-dough-7236946/",
+      "author": "Eva Bronzini",
+      "license_url": "https://www.pexels.com/license/",
+      "rights_confirmed": true,
+      "events": []
+    }
+  ]
+}

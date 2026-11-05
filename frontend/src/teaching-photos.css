@@ -1,0 +1,153 @@
+.teaching-photos {
+  margin-top: 12px;
+  min-width: 0;
+  white-space: normal;
+}
+.teaching-story {
+  max-width: 68ch;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.teaching-story p {
+  margin: 0;
+  white-space: pre-line;
+}
+.teaching-story p + p {
+  margin-top: 12px;
+}
+.teaching-step-fields .teaching-phase dd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.teaching-step-fields .teaching-phase dd > p {
+  min-width: 0;
+  margin: 0;
+}
+.teaching-step-fields .teaching-phase dd > p:only-child {
+  grid-column: 1 / -1;
+}
+.teaching-phase .teaching-photos {
+  margin-top: 0;
+}
+@media (min-width: 640px) {
+  .teaching-step-fields .teaching-phase dd {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.4fr);
+  }
+}
+.teaching-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 12px;
+}
+.teaching-photo-grid figure {
+  min-width: 0;
+  margin: 0;
+}
+.teaching-photo-zoom {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--ink);
+  cursor: zoom-in;
+}
+.teaching-photo-zoom img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 240px;
+  object-fit: contain;
+}
+.teaching-photo-zoom-label {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.teaching-photo-grid figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.teaching-photo-grid .time-link {
+  min-height: 32px;
+  padding: 4px 0;
+  font-size: 11px;
+}
+.teaching-photo-unavailable {
+  display: grid;
+  place-content: center;
+  min-height: 120px;
+  padding: 24px;
+  color: var(--ink);
+  background: var(--soft);
+  text-align: center;
+  font-size: 12px;
+}
+.teaching-photo-dialog {
+  box-sizing: border-box;
+  width: min(960px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 20px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+}
+.teaching-photo-dialog::backdrop {
+  background: rgb(20 30 24 / 70%);
+}
+.teaching-photo-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.teaching-photo-dialog-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.teaching-photo-dialog-head button {
+  min-height: 44px;
+  flex-shrink: 0;
+  padding: 8px;
+  color: var(--pine);
+  font-size: 12px;
+}
+.teaching-photo-dialog > img {
+  display: block;
+  width: 100%;
+  max-height: 70dvh;
+  object-fit: contain;
+  background: var(--ink);
+}
+.teaching-photo-dialog-caption {
+  margin: 12px 0 0;
+}
+@media (max-width: 420px) {
+  .teaching-photo-dialog {
+    padding: 12px;
+  }
+  .teaching-photo-dialog-head {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}

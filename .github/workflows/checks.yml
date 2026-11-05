@@ -1,0 +1,91 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend / ${{ matrix.database }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: master_experience_ci
+          POSTGRES_USER: master_experience_ci
+          POSTGRES_PASSWORD: ci-only-disposable-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U master_experience_ci -d master_experience_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_DEBUG: "1"
+      DEMO_MODE: "0"
+      DJANGO_SECRET_KEY: ci-only-not-a-deployment-secret
+      POSTGRES_HOST: ${{ matrix.database == 'postgres' && '127.0.0.1' || '' }}
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: master_experience_ci
+      POSTGRES_USER: master_experience_ci
+      POSTGRES_PASSWORD: ci-only-disposable-password
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: python -m pip install -r requirements.lock
+      - name: Install media test runtime
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Check project and migrations
+        run: |
+          python backend/manage.py check
+          python backend/manage.py makemigrations --check --dry-run
+          python backend/manage.py migrate --noinput
+      - name: Run API, permissions, media and database tests
+        run: python -m pytest -q
+      - name: Validate source plan
+        run: python scripts/check_plan.py
+
+  frontend:
+    name: Frontend / Node 24
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck and build
+        run: npm run build
+      - name: Test timestamp and language formatting
+        run: npm test

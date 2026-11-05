@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "purpose": "Local preparation benchmark, not a semantic action-recognition accuracy set",
+  "clips": [
+    {
+      "id": "paper-boat-loop-63s",
+      "path": "../artifacts/test-media/paper-boat/long-loop-test.mp4",
+      "kind": "repeated_real_source",
+      "source_url": "https://www.pexels.com/video/a-person-folding-a-paper-boat-8928508/",
+      "license_url": "https://www.pexels.com/license/",
+      "note": "Previously downloaded SHVETS production clip, repeated three times and scaled to 720p. Not three independent work processes.",
+      "events": []
+    }
+  ]
+}

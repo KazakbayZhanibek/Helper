@@ -1,0 +1,14 @@
+{
+  "example_only": true,
+  "duration_ms": 30000,
+  "language": "ru",
+  "segments": [
+    {
+      "id": "78b91d6a-2978-4a9f-8aac-e0f2268de8e0",
+      "ordinal": 1,
+      "start_ms": 12000,
+      "end_ms": 24000,
+      "text": "Сверяю предметы со списком комплектации. Всё совпало."
+    }
+  ]
+}

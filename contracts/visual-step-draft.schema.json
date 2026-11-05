@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:master-experience:visual-step-draft:v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "language", "steps", "warnings"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["2"]},
+    "language": {"type": "string", "enum": ["ru", "kk", "mixed"]},
+    "steps": {"type": "array", "maxItems": 30, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["title", "description", "evidence_frame_ids"],
+      "properties": {
+        "title": {"type": "string", "minLength": 3, "maxLength": 120},
+        "description": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "evidence_frame_ids": {"type": "array", "minItems": 2, "maxItems": 12, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}}
+      }
+    }},
+    "warnings": {"type": "array", "maxItems": 30, "items": {
+      "type": "object", "additionalProperties": false, "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string", "enum": ["insufficient_evidence", "uncertain_action", "missing_parameters", "occluded_view", "sampled_frames", "approximate_timing", "partial_video", "overlapping_ranges", "preliminary_live"]},
+        "message": {"type": "string", "minLength": 1, "maxLength": 600}
+      }
+    }}
+  }
+}

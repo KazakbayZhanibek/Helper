@@ -1,0 +1,1418 @@
+{
+  "as_of": "2026-10-28",
+  "estimate_kind": "initial human effort, not measured",
+  "reserve_factor": 1.25,
+  "tasks": [
+    {
+      "id": "T001",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 2,
+      "dependencies": [],
+      "requirements": [
+        "FR05"
+      ],
+      "title": "Зафиксировать один рабочий процесс",
+      "artifact": "docs/pilot-brief.md",
+      "work": "Описать пользователя, операцию, вход, результат, текущий способ обучения и признаки полезной инструкции.",
+      "done": "Есть один пример операции, границы пилота и список неизвестного; нет обещания подтверждённого спроса.",
+      "status": "pending"
+    },
+    {
+      "id": "T002",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T001"
+      ],
+      "requirements": [
+        "FR13",
+        "FR16",
+        "FR24",
+        "NF05",
+        "NF06"
+      ],
+      "title": "Прототип полного маршрута",
+      "artifact": "frontend prototype; docs/ux-feedback.md",
+      "work": "Собрать библиотеку, загрузку, редактор, проверку и читателя на фиктивных данных; показать двум людям.",
+      "done": "Зафиксированы наблюдения прохождения на телефоне и клавиатурой, три главные проблемы и исправления.",
+      "status": "pending"
+    },
+    {
+      "id": "T003",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T001"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Проверить проблему и найти пилот",
+      "artifact": "docs/pilot-interviews.md",
+      "work": "Подготовить вопросы, провести согласованные командой интервью с мастером, новичком и руководителем; выбрать один процесс.",
+      "done": "Есть свидетельства текущей проблемы, контакт владельца решения и согласие на пробу либо честный статус отсутствия партнёра.",
+      "status": "pending"
+    },
+    {
+      "id": "T004",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 3,
+      "dependencies": [
+        "T001"
+      ],
+      "requirements": [
+        "FR29"
+      ],
+      "title": "Определить правила использования материалов",
+      "artifact": "docs/data-agreement.md",
+      "work": "Описать разрешённые записи, роли, хранение, удаление и внешнюю передачу; отделить свои демо от компании.",
+      "done": "Для каждого материала известны источник и разрешённый режим; внешний AI по умолчанию выключен.",
+      "status": "pending"
+    },
+    {
+      "id": "T005",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 3,
+      "dependencies": [
+        "T004"
+      ],
+      "requirements": [
+        "FR28",
+        "NF12"
+      ],
+      "title": "Задать лимит бюджета и критерии инфраструктуры",
+      "artifact": "docs/budget.md",
+      "work": "Собрать реальные датированные предложения для сервера/хранения/API, формулу расходов и потолок; покупок без решения нет.",
+      "done": "В таблице отделены предложения от одобренных сумм; если суммы не выбраны, платные вызовы заблокированы.",
+      "status": "pending"
+    },
+    {
+      "id": "T006",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T002"
+      ],
+      "requirements": [
+        "FR24"
+      ],
+      "title": "Создать frontend основу",
+      "artifact": "frontend; frontend lockfile",
+      "work": "Настроить React/TypeScript/Vite, router, базовые токены стиля, lint/typecheck и один компонентный тест.",
+      "done": "Чистая установка по lock проходит, локальный экран работает, нет секретов и фиктивных production данных.",
+      "status": "pending"
+    },
+    {
+      "id": "T007",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 5,
+      "dependencies": [
+        "T001"
+      ],
+      "requirements": [
+        "FR01"
+      ],
+      "title": "Создать backend основу",
+      "artifact": "backend/config; dependency lock",
+      "work": "Настроить Django/DRF, свою User-модель до первой миграции, test settings и PostgreSQL подключение.",
+      "done": "Миграции проходят на пустой БД, health работает, test command повторяем, DEBUG запрещён в pilot.",
+      "status": "pending"
+    },
+    {
+      "id": "T008",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 5,
+      "dependencies": [
+        "T006",
+        "T007"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Настроить воспроизводимые проверки",
+      "artifact": "CI config; scripts; CONTRIBUTING.md",
+      "work": "Зафиксировать команды lint/typecheck/backend tests и формат PR; тестовые секреты отделить.",
+      "done": "Проверки проходят в чистой среде, намеренная ошибка типа/теста останавливает pipeline.",
+      "status": "pending"
+    },
+    {
+      "id": "T009",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 4,
+      "dependencies": [
+        "T004"
+      ],
+      "requirements": [
+        "FR07",
+        "FR10"
+      ],
+      "title": "Подготовить медиа и ручной эталон",
+      "artifact": "fixtures manifest; annotation template",
+      "work": "Снять или взять разрешённые демо, разметить шаги и границы, подготовить корректный/повреждённый/беззвучный ролик.",
+      "done": "Все файлы имеют hash и происхождение, эталон проверен человеком, большие бинарные файлы не помещены в Git.",
+      "status": "pending"
+    },
+    {
+      "id": "T010",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 10,
+      "dependencies": [
+        "T007"
+      ],
+      "requirements": [
+        "FR02",
+        "FR03",
+        "FR05",
+        "FR20"
+      ],
+      "title": "Создать модели и ограничения данных",
+      "artifact": "backend models/migrations",
+      "work": "Реализовать сущности 04 для D0, tenant constraints, is_open, revisions, уникальности; определить миграции D1.",
+      "done": "ORM-тест отвергает чужие связи, порядок шагов меняется транзакционно, миграции обратимы где заявлено.",
+      "status": "pending"
+    },
+    {
+      "id": "T011",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 8,
+      "dependencies": [
+        "T010"
+      ],
+      "requirements": [
+        "FR01",
+        "NF01"
+      ],
+      "title": "Реализовать сессии, CSRF и reset",
+      "artifact": "backend/accounts",
+      "work": "Login/logout/me/reset, password validators, normalized 401/403, CSRF и rate limits.",
+      "done": "Положительные и отрицательные auth тесты проходят; reset не раскрывает наличие email; токен одноразовый.",
+      "status": "pending"
+    },
+    {
+      "id": "T012",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 6,
+      "dependencies": [
+        "T011"
+      ],
+      "requirements": [
+        "FR01",
+        "FR02",
+        "FR04"
+      ],
+      "title": "Приглашения и управление участниками",
+      "artifact": "backend/organizations; mail templates",
+      "work": "Создать приглашения с TTL/hash, принять/отозвать, менять role/active; защитить последнего admin.",
+      "done": "Повтор и гонка accept не дублируют membership; конкурирующая демоция не оставляет организацию без admin.",
+      "status": "pending"
+    },
+    {
+      "id": "T013",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 6,
+      "dependencies": [
+        "T010",
+        "T011"
+      ],
+      "requirements": [
+        "FR02",
+        "FR03",
+        "FR04",
+        "NF01"
+      ],
+      "title": "Единая проверка полномочий",
+      "artifact": "backend access services; tests",
+      "work": "Ввести scoped queries и policy actions, нейтральный отказ чужим IDs, suspended/deleted проверки.",
+      "done": "Матрица ролей проверена на инструкции и связанных объектах; отключение действует со следующего запроса.",
+      "status": "pending"
+    },
+    {
+      "id": "T014",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 5,
+      "dependencies": [
+        "T006",
+        "T012"
+      ],
+      "requirements": [
+        "FR02",
+        "FR04"
+      ],
+      "title": "Экран участников",
+      "artifact": "frontend/features/members",
+      "work": "Список, invite, роль, отключение, истёкшее приглашение, LAST_ADMIN, loading/error состояния.",
+      "done": "Reader не видит управление; admin проходит invite и revoke; серверный отказ отображается без потери формы.",
+      "status": "pending"
+    },
+    {
+      "id": "T015",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T006",
+        "T011"
+      ],
+      "requirements": [
+        "FR01",
+        "FR23"
+      ],
+      "title": "Интерфейс входа и сессии",
+      "artifact": "frontend/features/auth; api client",
+      "work": "Вход, reset, accept invite, protected routes, return-to после QR, обработка expiry и CSRF.",
+      "done": "QR возвращает на внутреннюю страницу после входа; внешний redirect запрещён; секреты не хранятся в localStorage.",
+      "status": "pending"
+    },
+    {
+      "id": "T016",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T011",
+        "T012",
+        "T013"
+      ],
+      "requirements": [
+        "FR03",
+        "FR15"
+      ],
+      "title": "Зафиксировать OpenAPI и типы",
+      "artifact": "contracts/openapi.yaml; frontend/src/api",
+      "work": "Настроить генерацию схемы ошибок, auth, ролей, ETag и типов; добавить contract check в CI.",
+      "done": "Frontend использует generated types; изменение server schema без обновления контракта обнаруживается проверкой.",
+      "status": "pending"
+    },
+    {
+      "id": "T017",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 10,
+      "dependencies": [
+        "T010",
+        "T013",
+        "T020"
+      ],
+      "requirements": [
+        "FR05",
+        "FR06",
+        "FR07"
+      ],
+      "title": "Создание инструкции и потоковая загрузка",
+      "artifact": "backend/media_assets; upload services",
+      "work": "Создать draft, UploadSession, atomic quota reservation, streaming temp file, size/hash checks и cancel.",
+      "done": "Обрыв, двойная отправка, неверный размер и гонка квоты не дают лишних файлов/расхода; RAM не растёт на размер файла.",
+      "status": "pending"
+    },
+    {
+      "id": "T018",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T015",
+        "T017"
+      ],
+      "requirements": [
+        "FR06",
+        "FR08",
+        "FR09",
+        "NF07"
+      ],
+      "title": "Экран загрузки и состояния обработки",
+      "artifact": "frontend/features/upload",
+      "work": "Выбор файла/языка, лимиты, XHR progress, cancel/retry, polling с backoff, ручной путь.",
+      "done": "Перезагрузка восстанавливает job; процент показывает только bytes upload; нет вечного спиннера при failed.",
+      "status": "pending"
+    },
+    {
+      "id": "T019",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T009",
+        "T010"
+      ],
+      "requirements": [
+        "FR07",
+        "FR10",
+        "NF10"
+      ],
+      "title": "Проверка и подготовка видео",
+      "artifact": "backend/processing/media",
+      "work": "FFprobe/FFmpeg с bounds, rotation, 720p playback, thumbnail, isolated temp и безопасными аргументами.",
+      "done": "Допустимый, портретный, HEVC, тихий и повреждённый примеры ведут себя ожидаемо; timeout убивает процесс.",
+      "status": "pending"
+    },
+    {
+      "id": "T020",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 10,
+      "dependencies": [
+        "T008",
+        "T010"
+      ],
+      "requirements": [
+        "FR08",
+        "FR09",
+        "NF07",
+        "NF10",
+        "NF11"
+      ],
+      "title": "Надёжный исполнитель фоновых заданий",
+      "artifact": "backend/processing/jobs",
+      "work": "DB jobs, lease/heartbeat/fencing, on_commit dispatch, recovery, cancel и retry; broker несёт только ID.",
+      "done": "Crash и двойная доставка дают один принятый результат; потеря dispatch восстанавливается; stale attempt не пишет.",
+      "status": "pending"
+    },
+    {
+      "id": "T021",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 6,
+      "dependencies": [
+        "T013",
+        "T017",
+        "T019",
+        "T020"
+      ],
+      "requirements": [
+        "FR03",
+        "FR10"
+      ],
+      "title": "Закрытая выдача видео",
+      "artifact": "backend media views; infra/nginx",
+      "work": "Связать prepare job с upload; авторизовать playback/thumbnail через internal location и Range.",
+      "done": "Reader не читает draft/чужое видео/оригинал; прямой internal URL запрещён; Range/HEAD/416 проверены на стенде.",
+      "status": "pending"
+    },
+    {
+      "id": "T022",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 8,
+      "dependencies": [
+        "T010",
+        "T013",
+        "T016"
+      ],
+      "requirements": [
+        "FR13",
+        "FR14",
+        "FR15",
+        "NF08"
+      ],
+      "title": "API ручного редактора",
+      "artifact": "backend/instructions/services",
+      "work": "GET/PUT working copy, validate bounds/evidence, If-Match, reorder, сброс checked, комментарии старых шагов.",
+      "done": "Два PUT дают success и 412; неверный шаг откатывает весь запрос; закрытая/in_review копия не изменяется.",
+      "status": "pending"
+    },
+    {
+      "id": "T023",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 12,
+      "dependencies": [
+        "T002",
+        "T015",
+        "T022"
+      ],
+      "requirements": [
+        "FR13",
+        "FR14",
+        "FR16"
+      ],
+      "title": "Редактор шагов и preview",
+      "artifact": "frontend/features/editor",
+      "work": "Добавить/удалить/переставить шаг, название/описание/время, ошибки, сохранение и preview reader.",
+      "done": "Можно вручную собрать инструкцию из трёх шагов; ошибки у нужных полей; preview совпадает с будущим snapshot.",
+      "status": "pending"
+    },
+    {
+      "id": "T024",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 8,
+      "dependencies": [
+        "T021",
+        "T023"
+      ],
+      "requirements": [
+        "FR10",
+        "FR14",
+        "FR24"
+      ],
+      "title": "Плеер с переходом к шагу",
+      "artifact": "frontend video components",
+      "work": "Видео, controls, seek start, pause end, speed, fullscreen, duration/rotation, отказ загрузки.",
+      "done": "Работает после жеста пользователя на телефоне; время вне duration не принимается; ошибка медиа не стирает шаги.",
+      "status": "pending"
+    },
+    {
+      "id": "T025",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 5,
+      "dependencies": [
+        "T022",
+        "T023"
+      ],
+      "requirements": [
+        "FR15",
+        "NF04",
+        "NF08"
+      ],
+      "title": "Автосохранение без потери правок",
+      "artifact": "frontend editor save queue",
+      "work": "Debounce 1500 ms, один inflight, latest pending, ETag update, conflict UI, dirty navigation.",
+      "done": "Гонки, offline и expiry не показывают ложное сохранение; локальный текст остаётся доступным после 412.",
+      "status": "pending"
+    },
+    {
+      "id": "T026",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 7,
+      "dependencies": [
+        "T022"
+      ],
+      "requirements": [
+        "FR17",
+        "FR18",
+        "FR19"
+      ],
+      "title": "Серверный процесс проверки",
+      "artifact": "backend review services",
+      "work": "Submit/withdraw/return, frozen copy, review comments, resolve blocker и check-step с revision.",
+      "done": "Author не снимает блокер; правка сбрасывает проверки; возврат требует причину; stale ETag отклоняется.",
+      "status": "pending"
+    },
+    {
+      "id": "T027",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T024",
+        "T025",
+        "T026"
+      ],
+      "requirements": [
+        "FR17",
+        "FR18",
+        "FR19"
+      ],
+      "title": "Экран проверки и замечаний",
+      "artifact": "frontend/features/review",
+      "work": "Видео рядом со шагами, подтверждения, blocking comments, return и publish summary.",
+      "done": "Reviewer видит все непроверенные шаги и блокеры; author может исправить после возврата, без обхода прав.",
+      "status": "pending"
+    },
+    {
+      "id": "T028",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 8,
+      "dependencies": [
+        "T026",
+        "T021"
+      ],
+      "requirements": [
+        "FR19",
+        "FR20",
+        "FR21"
+      ],
+      "title": "Публикация и неизменяемые версии",
+      "artifact": "backend publication service",
+      "work": "Transaction locks, snapshot/hash, version number, current pointer, idempotency, withdraw и create-draft.",
+      "done": "PUB01–PUB04 проходят; новая правка не меняет старый snapshot; отзыв не возвращает прежнюю версию автоматически.",
+      "status": "pending"
+    },
+    {
+      "id": "T029",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T027",
+        "T028"
+      ],
+      "requirements": [
+        "FR20",
+        "FR21"
+      ],
+      "title": "История и новая рабочая версия",
+      "artifact": "frontend/features/versions",
+      "work": "История для W, создание draft из версии, отказ при активном draft, withdrawal с причиной.",
+      "done": "Reader не получает history endpoint; новая версия не подменяет открытый текст без сообщения.",
+      "status": "pending"
+    },
+    {
+      "id": "T030",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 5,
+      "dependencies": [
+        "T028"
+      ],
+      "requirements": [
+        "FR22",
+        "NF03"
+      ],
+      "title": "Поиск по текущим публикациям",
+      "artifact": "backend/search",
+      "work": "Список, q/language/status/cursor; PostgreSQL simple, tenant filters, transactional search update.",
+      "done": "Поиск не выдаёт draft/withdrawn/чужое; RU/KK термины и 100 записей проверены, без обещаний морфологии KK.",
+      "status": "pending"
+    },
+    {
+      "id": "T031",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T015",
+        "T030"
+      ],
+      "requirements": [
+        "FR22"
+      ],
+      "title": "Библиотека инструкций",
+      "artifact": "frontend/features/library",
+      "work": "Поиск, фильтры, карточки, состояния empty/loading/error, clear filters, role-aware actions.",
+      "done": "Длинные названия и нулевая выдача читаемы; старый поисковый ответ не заменяет более новый запрос.",
+      "status": "pending"
+    },
+    {
+      "id": "T032",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 7,
+      "dependencies": [
+        "T024",
+        "T028",
+        "T031"
+      ],
+      "requirements": [
+        "FR23",
+        "FR24",
+        "NF06"
+      ],
+      "title": "Мобильный читатель и QR",
+      "artifact": "frontend/features/reader",
+      "work": "Текущий snapshot, шаги, видео, next/previous, QR защищённого URL, new-version banner.",
+      "done": "360 px без горизонтального скролла; QR не содержит секрет; старую отозванную версию нельзя загрузить снова.",
+      "status": "pending"
+    },
+    {
+      "id": "T033",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T028"
+      ],
+      "requirements": [
+        "FR25"
+      ],
+      "title": "API замечаний читателя",
+      "artifact": "backend/feedback",
+      "work": "Create/list/resolve с version и snapshot_step_id, категориями, правами и idempotency.",
+      "done": "Замечание остаётся у правильной версии после новой публикации; чужие IDs и duplicate submit обработаны.",
+      "status": "pending"
+    },
+    {
+      "id": "T034",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T032",
+        "T033"
+      ],
+      "requirements": [
+        "FR25"
+      ],
+      "title": "Форма ошибки и очередь замечаний",
+      "artifact": "frontend/features/feedback",
+      "work": "Кнопка у шага, форма, подтверждение, список для W, решение с пояснением.",
+      "done": "Reader видит результат отправки; ошибка сети позволяет повтор без дубля; автор находит исходную версию.",
+      "status": "pending"
+    },
+    {
+      "id": "T035",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 7,
+      "dependencies": [
+        "T013",
+        "T020",
+        "T028"
+      ],
+      "requirements": [
+        "FR26"
+      ],
+      "title": "Удаление и немедленный запрет доступа",
+      "artifact": "backend deletion services",
+      "work": "Soft delete, cancel jobs, DeletionRecord, audit и durable tombstone event; endpoint статуса.",
+      "done": "Сразу исчезают search/media; повтор удаления идемпотентен; поздний job не восстанавливает данные.",
+      "status": "pending"
+    },
+    {
+      "id": "T036",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 5,
+      "dependencies": [
+        "T019",
+        "T020",
+        "T035"
+      ],
+      "requirements": [
+        "FR26"
+      ],
+      "title": "Физическая уборка файлов и производных",
+      "artifact": "backend cleanup worker",
+      "work": "Удалять original/playback/audio/thumbnail и контент БД; cleanup временных/stale sessions и безопасный retry.",
+      "done": "DEL01 первая часть проходит, квота освобождается один раз, active lease temp не удаляется.",
+      "status": "pending"
+    },
+    {
+      "id": "T037",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 4,
+      "dependencies": [
+        "T011",
+        "T017",
+        "T028",
+        "T035"
+      ],
+      "requirements": [
+        "FR27",
+        "NF11"
+      ],
+      "title": "Структурированный журнал",
+      "artifact": "backend/audit; logging config",
+      "work": "События по allowlist, request/job IDs, redaction, retention и операторский поиск.",
+      "done": "Тесты/просмотр логов не находят tokens, cookie, transcript и provider key; действие связано с actor/object.",
+      "status": "pending"
+    },
+    {
+      "id": "T038",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T013",
+        "T021",
+        "T028",
+        "T035"
+      ],
+      "requirements": [
+        "FR02",
+        "FR03",
+        "FR04",
+        "NF01"
+      ],
+      "title": "Полная матрица отрицательных проверок",
+      "artifact": "backend permission tests",
+      "work": "Параметризовать org/role/lifecycle для всех текущих endpoints, медиа и связей.",
+      "done": "SEC01–SEC06 проходят; нет исключённых endpoints без явного объяснения и последующей задачи.",
+      "status": "pending"
+    },
+    {
+      "id": "T039",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T018",
+        "T025",
+        "T029",
+        "T032",
+        "T034"
+      ],
+      "requirements": [
+        "FR30",
+        "NF08"
+      ],
+      "title": "Сквозной ручной процесс",
+      "artifact": "e2e tests; evidence report",
+      "work": "Автоматизировать login→upload→manual→review→publish→reader→feedback и сетевые ошибки.",
+      "done": "Сценарий повторяется из чистых fixtures; секретные данные не попадают в screenshots/CI artifacts.",
+      "status": "pending"
+    },
+    {
+      "id": "T040",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T039"
+      ],
+      "requirements": [
+        "FR24",
+        "NF05",
+        "NF06"
+      ],
+      "title": "Мобильная и клавиатурная приёмка",
+      "artifact": "docs/ux-acceptance.md; UI fixes",
+      "work": "Проверить реальные телефоны, focus/dialogs, long text, Cyrillic/KK, reduced motion и slow network.",
+      "done": "Записаны устройства/браузеры, исправлены блокирующие проблемы, основная задача доступна без drag.",
+      "status": "pending"
+    },
+    {
+      "id": "T041",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T054",
+        "T036",
+        "T037"
+      ],
+      "requirements": [
+        "FR30",
+        "NF09"
+      ],
+      "title": "Резервирование и первая репетиция restore",
+      "artifact": "infra backup/restore scripts",
+      "work": "Согласованный DB/media backup, manifest, encrypted external target, retention, восстановление закрытой среды.",
+      "done": "Данные и media hashes совпали; измерены RPO/RTO; результат не основан на одном successful backup exit.",
+      "status": "pending"
+    },
+    {
+      "id": "T042",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T038",
+        "T039",
+        "T040"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Приёмка ручного продукта",
+      "artifact": "docs/d0-acceptance.md",
+      "work": "Вместе с B/C пройти D0 criteria, сверить реальные данные и журнал дефектов.",
+      "done": "Все блокирующие критерии выполнены либо D0 остаётся неготовым; есть версия и свидетельства, а не только чекбоксы.",
+      "status": "pending"
+    },
+    {
+      "id": "T043",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T009",
+        "T019",
+        "T020"
+      ],
+      "requirements": [
+        "FR11",
+        "NF10"
+      ],
+      "title": "ASR и расшифровка с сегментами",
+      "artifact": "backend processing ASR adapter",
+      "work": "Переиспользовать установленный runtime, получить RU/KK/mixed сегменты, raw/corrected separation и revision.",
+      "done": "На разрешённых образцах есть реальные результаты, длительность/RAM; no-audio не запускает бессмысленную генерацию.",
+      "status": "pending"
+    },
+    {
+      "id": "T044",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 6,
+      "dependencies": [
+        "T004",
+        "T005",
+        "T020"
+      ],
+      "requirements": [
+        "FR12",
+        "FR28",
+        "FR29"
+      ],
+      "title": "Адаптер составления шагов",
+      "artifact": "backend processing providers",
+      "work": "Fake/Disabled/External providers, typed errors, timeout, versioned config и usage; разрешение реального API отдельно.",
+      "done": "Fake покрывает сбои; внешняя отправка без настройки запрещена; разрешённый запрос записывает usage без текста в логах.",
+      "status": "pending"
+    },
+    {
+      "id": "T045",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 6,
+      "dependencies": [
+        "T043",
+        "T044"
+      ],
+      "requirements": [
+        "FR12"
+      ],
+      "title": "Prompt и строгая проверка предложения",
+      "artifact": "backend draft schema validator",
+      "work": "Реализовать steps-v1, JSON Schema, evidence/time semantic validation, предупреждения и input size limits.",
+      "done": "Выдуманные IDs/числа/лишние поля/31 шаг/команды в transcript не применяются; pipeline не публикует.",
+      "status": "pending"
+    },
+    {
+      "id": "T046",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T045"
+      ],
+      "requirements": [
+        "FR11",
+        "FR12"
+      ],
+      "title": "Отложенный набор и оценка качества",
+      "artifact": "fixtures AI evaluations; docs/ai-eval.md",
+      "work": "Разделить tuning/holdout, разметить независимые эталоны, измерить качество по языкам и ошибки.",
+      "done": "Есть отчёт с размером набора, источниками, версиями и неудачами; пороги не подгоняются под финальный тест.",
+      "status": "pending"
+    },
+    {
+      "id": "T047",
+      "tier": "D1",
+      "owner": "B",
+      "hours": 6,
+      "dependencies": [
+        "T022",
+        "T043",
+        "T045"
+      ],
+      "requirements": [
+        "FR11",
+        "FR12",
+        "FR15"
+      ],
+      "title": "Transcript/proposal API и применение",
+      "artifact": "backend transcript/proposal services",
+      "work": "Миграции D1, correction revision, generation base revision, apply с проверкой актуальности и audit.",
+      "done": "Исправление transcript инвалидирует checks; stale proposal даёт 409 и не затирает ручной текст.",
+      "status": "pending"
+    },
+    {
+      "id": "T048",
+      "tier": "D1",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T024",
+        "T047"
+      ],
+      "requirements": [
+        "FR11"
+      ],
+      "title": "Редактор расшифровки",
+      "artifact": "frontend/features/transcript",
+      "work": "Сегменты с временем, переход в видео, correction, raw text доступен для сверки, revision conflict.",
+      "done": "Исправление не переписывает raw; длинная расшифровка читаема; ошибки и неопределённость видны.",
+      "status": "pending"
+    },
+    {
+      "id": "T049",
+      "tier": "D1",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T048",
+        "T047"
+      ],
+      "requirements": [
+        "FR09",
+        "FR12",
+        "FR13"
+      ],
+      "title": "Принятие черновика ИИ",
+      "artifact": "frontend/features/proposals",
+      "work": "Показать предложение/источники/warnings, подтвердить замену шагов, обработать stale и manual fallback.",
+      "done": "Применение только явным действием; одновременная правка не теряется; все checks после применения сброшены.",
+      "status": "pending"
+    },
+    {
+      "id": "T050",
+      "tier": "D1",
+      "owner": "B",
+      "hours": 6,
+      "dependencies": [
+        "T005",
+        "T044",
+        "T047"
+      ],
+      "requirements": [
+        "FR28",
+        "FR29",
+        "NF12"
+      ],
+      "title": "Атомарный учёт расходов",
+      "artifact": "backend budget ledger",
+      "work": "Добавить reservation/settlement, pricing version, дневной предел, неизвестный outcome и kill switch.",
+      "done": "Гонка двух запросов не превышает лимит; все retries учитываются; key/бюджет не доступны frontend.",
+      "status": "pending"
+    },
+    {
+      "id": "T051",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 6,
+      "dependencies": [
+        "T043",
+        "T045",
+        "T050"
+      ],
+      "requirements": [
+        "FR08",
+        "FR09",
+        "NF10",
+        "NF11"
+      ],
+      "title": "Сбои реальной ASR/ИИ обработки",
+      "artifact": "processing retry/cancel tests",
+      "work": "Проверить provider 429/5xx, invalid JSON, cancel subprocess, lease loss, provider disable и повтор стадии.",
+      "done": "Сохранены готовое видео и ручные шаги, нет бесконечных retry, orphan outputs убраны.",
+      "status": "pending"
+    },
+    {
+      "id": "T052",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 6,
+      "dependencies": [
+        "T046",
+        "T049",
+        "T050",
+        "T051"
+      ],
+      "requirements": [
+        "FR12",
+        "FR29",
+        "FR30"
+      ],
+      "title": "Сквозные и негативные тесты D1",
+      "artifact": "e2e AI tests; provider fixtures",
+      "work": "Проверить actual approved provider отдельно от fixtures; включить prompt injection и чужие evidence.",
+      "done": "Разрешённый путь проходит, неподтверждённый контент не публикуется, budget/data gate нельзя обойти.",
+      "status": "pending"
+    },
+    {
+      "id": "T053",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T005",
+        "T019"
+      ],
+      "requirements": [
+        "NF10",
+        "NF12"
+      ],
+      "title": "Выбор тестового хостинга",
+      "artifact": "docs/hosting-decision.md",
+      "work": "Сопоставить результаты медиа с ресурсами и требованиями данных, выбрать конфигурацию после решения владельца.",
+      "done": "Есть конфигурация/стоимость/владелец/регион; если нет решения, продолжать локально без заявления о доступном стенде.",
+      "status": "pending"
+    },
+    {
+      "id": "T054",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 8,
+      "dependencies": [
+        "T008",
+        "T021",
+        "T053"
+      ],
+      "requirements": [
+        "FR30",
+        "NF10"
+      ],
+      "title": "Развёртывание staging",
+      "artifact": "infra/compose; nginx; release scripts",
+      "work": "HTTPS, private volumes, DB/broker internal, worker/recovery, migrations, environment validation.",
+      "done": "С чистого сервера воспроизводится manual smoke; direct media запрещено; DEBUG/secrets проверены.",
+      "status": "pending"
+    },
+    {
+      "id": "T055",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 5,
+      "dependencies": [
+        "T037",
+        "T054"
+      ],
+      "requirements": [
+        "NF07",
+        "NF11"
+      ],
+      "title": "Мониторинг и рабочие инструкции",
+      "artifact": "infra monitoring; docs/runbooks",
+      "work": "Метрики queue/disk/latency/backup, health endpoints, thresholds и инструкция действий.",
+      "done": "Искусственный сбой виден и объясним; мониторинг не раскрывает содержимое и внутренние endpoints наружу.",
+      "status": "pending"
+    },
+    {
+      "id": "T056",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 6,
+      "dependencies": [
+        "T030",
+        "T039",
+        "T054"
+      ],
+      "requirements": [
+        "NF02",
+        "NF03",
+        "NF04",
+        "NF10"
+      ],
+      "title": "Нагрузочная проверка пилота",
+      "artifact": "load scripts; docs/performance.md",
+      "work": "10 users, 100 instructions, p95 metadata/search/save, media durations/RSS; фиксировать стенд.",
+      "done": "Есть фактические значения и ошибки; превышение целей ведёт к исправлению/изменению лимита с обоснованием.",
+      "status": "pending"
+    },
+    {
+      "id": "T057",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T003",
+        "T004",
+        "T032",
+        "T034"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Подготовка пользовательского эксперимента",
+      "artifact": "docs/pilot-protocol.md",
+      "work": "Выбрать 5 процессов, сценарии для мастера/читателя, baseline времени, форму согласия и обратной связи.",
+      "done": "Назначен владелец проверки контента; если партнёра нет, явно указан demo-only и следующий способ поиска.",
+      "status": "pending"
+    },
+    {
+      "id": "T058",
+      "tier": "D1",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T052",
+        "T063",
+        "T068"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Техническая приёмка D1",
+      "artifact": "docs/d1-acceptance.md",
+      "work": "Собрать отчёты качества/затрат/ошибок и пройти D1 criteria с командой.",
+      "done": "Решение с перечнем поддержанных языков и ограничений; провал критерия оставляет функцию экспериментальной.",
+      "status": "pending"
+    },
+    {
+      "id": "T059",
+      "tier": "D1",
+      "owner": "A",
+      "hours": 8,
+      "dependencies": [
+        "T057",
+        "T058"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Пилот с мастером и читателями",
+      "artifact": "docs/pilot-results.md",
+      "work": "Пять утверждённых инструкций, пять читателей, шесть парных задач по времени; наблюдение без подсказок.",
+      "done": "Фактическая полезность, правки и время записаны; отсутствие партнёра не заменено вымышленными отзывами.",
+      "status": "pending"
+    },
+    {
+      "id": "T060",
+      "tier": "D1",
+      "owner": "A",
+      "hours": 6,
+      "dependencies": [
+        "T059"
+      ],
+      "requirements": [
+        "FR13",
+        "FR24",
+        "FR30"
+      ],
+      "title": "Исправить основные проблемы пилота",
+      "artifact": "scoped fixes; updated tests",
+      "work": "Выбрать три наиболее частых препятствия, назначить владельцев и исправить без расширения всего продукта.",
+      "done": "Каждая проблема воспроизведена до и проверена после; обновлены затронутые критерии и инструкции.",
+      "status": "pending"
+    },
+    {
+      "id": "T061",
+      "tier": "D2",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T059"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Проверить коммерческую модель",
+      "artifact": "docs/business-validation.md",
+      "work": "Сравнить готовность продолжать/платить, стоимость инструкции, альтернативы и поддержку; провести ценовые интервью.",
+      "done": "Цена обозначена гипотезой до оплаты/решения клиента; есть критерий продолжить, изменить сегмент или остановить расширение.",
+      "status": "pending"
+    },
+    {
+      "id": "T062",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 4,
+      "dependencies": [
+        "T041",
+        "T055"
+      ],
+      "requirements": [
+        "FR30",
+        "NF09",
+        "NF11"
+      ],
+      "title": "Руководство эксплуатации и передачи",
+      "artifact": "docs/operator-handbook.md",
+      "work": "Описать install/update/restore/delete/revoke, владельцев секретов, инцидент и экспорт при уходе пилота.",
+      "done": "Другой участник выполняет smoke и restore по тексту без устных подсказок автора.",
+      "status": "pending"
+    },
+    {
+      "id": "T063",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T042",
+        "T054",
+        "T056",
+        "T057",
+        "T062",
+        "T064",
+        "T065",
+        "T066"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Выпустить D0",
+      "artifact": "release record; evidence",
+      "work": "Проверить критерии и отсутствие P0/P1, согласовать доступ к стенду, отметить точную версию.",
+      "done": "Ручной продукт работает в согласованной среде; AI выключен; demo и pilot статусы различаются.",
+      "status": "pending"
+    },
+    {
+      "id": "T064",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T016",
+        "T034",
+        "T035",
+        "T067"
+      ],
+      "requirements": [
+        "FR02",
+        "FR15",
+        "FR30"
+      ],
+      "title": "Сверить API, типы и документацию",
+      "artifact": "contract validation report",
+      "work": "Перечислить все D0 endpoints, статусы, роли и schema, обновить generated types и fixtures.",
+      "done": "Нет дрейфа API/UX; неизвестные маршруты не используются frontend; 401/403/404/412/428 проверены.",
+      "status": "pending"
+    },
+    {
+      "id": "T065",
+      "tier": "D0",
+      "owner": "C",
+      "hours": 4,
+      "dependencies": [
+        "T036",
+        "T041"
+      ],
+      "requirements": [
+        "FR26",
+        "NF09"
+      ],
+      "title": "Удаление после восстановления",
+      "artifact": "restore/deletion test report",
+      "work": "Удалить инструкцию, восстановить более старый backup закрыто, применить durable tombstones и очистку.",
+      "done": "Удалённый source, snapshots и derivatives не доступны после открытия; сроки retention объяснены.",
+      "status": "pending"
+    },
+    {
+      "id": "T066",
+      "tier": "D0",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T038",
+        "T054"
+      ],
+      "requirements": [
+        "FR03",
+        "FR29",
+        "NF01"
+      ],
+      "title": "Проверить угрозы и настройки релиза",
+      "artifact": "docs/security-review.md",
+      "work": "Пройти секреты, upload isolation, CSRF, last admin, private media, dependency advisories и external AI default.",
+      "done": "Критичные находки закрыты проверками; нет заявления о полном security audit без соответствующего объёма.",
+      "status": "pending"
+    },
+    {
+      "id": "T067",
+      "tier": "D0",
+      "owner": "A",
+      "hours": 4,
+      "dependencies": [
+        "T013",
+        "T015",
+        "T035"
+      ],
+      "requirements": [
+        "FR26",
+        "FR28",
+        "FR29"
+      ],
+      "title": "Настройки и удаление в UI",
+      "artifact": "frontend/features/settings",
+      "work": "Лимиты, используемое место, admin confirmation delete, статус удаления; внешняя AI настройка пока off.",
+      "done": "Не-admin не изменяет настройки; отмена диалога ничего не удаляет; удаляемая инструкция сразу скрыта.",
+      "status": "pending"
+    },
+    {
+      "id": "T068",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 4,
+      "dependencies": [
+        "T037",
+        "T049",
+        "T050"
+      ],
+      "requirements": [
+        "FR27",
+        "FR28",
+        "FR30"
+      ],
+      "title": "Метрики полезности и затрат",
+      "artifact": "backend metrics; report query",
+      "work": "Собирать события create/review/publish/open-step/feedback без текста, usage и длительность редактирования.",
+      "done": "Отчёт по инструкции строится без слежения за личной эффективностью; определён знаменатель каждой метрики.",
+      "status": "pending"
+    },
+    {
+      "id": "T069",
+      "tier": "D1",
+      "owner": "C",
+      "hours": 6,
+      "dependencies": [
+        "T046",
+        "T052"
+      ],
+      "requirements": [
+        "FR11",
+        "FR12"
+      ],
+      "title": "Решение по казахскому языку",
+      "artifact": "docs/kk-evaluation.md",
+      "work": "Разделить RU/KK/mixed результаты, оценить новый KK набор при доступности, зафиксировать терминологические ошибки.",
+      "done": "Если данных мало/порог не пройден, KK AI обозначен экспериментальным; ручной KK текст работает.",
+      "status": "pending"
+    },
+    {
+      "id": "T070",
+      "tier": "D1",
+      "owner": "A",
+      "hours": 3,
+      "dependencies": [
+        "T059",
+        "T060"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Пересмотреть план после пилота",
+      "artifact": "docs/pilot-retrospective.md",
+      "work": "Сравнить оценки/часы, повторное использование, ошибки и стоимость, выбрать следующий узкий результат.",
+      "done": "Есть конкретное решение и его наблюдаемые основания; нет автоматического обещания масштабирования.",
+      "status": "pending"
+    },
+    {
+      "id": "T071",
+      "tier": "D2",
+      "owner": "A",
+      "hours": 3,
+      "dependencies": [
+        "T061",
+        "T070"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "План развития на следующие месяцы",
+      "artifact": "docs/next-quarter.md",
+      "work": "Ранжировать актуальность, перевод, Q&A, offline и интеграции по подтверждённым запросам.",
+      "done": "У каждой выбранной функции есть пользователь, критерий пользы, стоимость и отдельная спецификация до реализации.",
+      "status": "pending"
+    },
+    {
+      "id": "T072",
+      "tier": "D1",
+      "owner": "B",
+      "hours": 4,
+      "dependencies": [
+        "T058",
+        "T060",
+        "T069",
+        "T070"
+      ],
+      "requirements": [
+        "FR30"
+      ],
+      "title": "Выпустить проверенный D1",
+      "artifact": "D1 release record; refreshed contracts",
+      "work": "Повторить затронутые тесты, обновить API/схемы/документы после AI миграций, backup и release notes.",
+      "done": "Есть рабочая версия с явными языковыми ограничениями, реальными результатами и планом поддержки, без P0/P1.",
+      "status": "pending"
+    }
+  ]
+}

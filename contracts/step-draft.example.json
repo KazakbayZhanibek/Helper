@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "language": "ru",
+  "steps": [
+    {
+      "title": "Сверьте состав набора",
+      "description": "Сверьте предметы со списком комплектации.",
+      "start_ms": 12000,
+      "end_ms": 24000,
+      "evidence_segment_ids": ["78b91d6a-2978-4a9f-8aac-e0f2268de8e0"]
+    }
+  ],
+  "warnings": []
+}

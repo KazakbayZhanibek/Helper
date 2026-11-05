@@ -1,0 +1,8 @@
+Django==5.2.18
+djangorestframework==3.18.3
+psycopg[binary]==3.3.6
+pytest==9.2.0
+pytest-django==4.14.0
+Pillow==13.0.0
+imageio-ffmpeg==0.7.0
+jsonschema==4.26.0
