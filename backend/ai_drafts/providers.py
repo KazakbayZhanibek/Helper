@@ -18,6 +18,8 @@ from .validation import SCHEMA, InvalidModelOutput, parse_json
 NVIDIA_ENDPOINT = 'https://integrate.api.nvidia.com/v1'
 OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1'
 OPENROUTER_BUDGET_MODEL = 'google/gemini-2.5-flash-lite'
+OPENROUTER_QWEN_MODEL = 'qwen/qwen3.5-flash-02-23'
+OPENROUTER_PAID_MODELS = frozenset({OPENROUTER_BUDGET_MODEL, OPENROUTER_QWEN_MODEL})
 
 
 def is_free_openrouter_model(model):
@@ -52,15 +54,17 @@ def provider_api_key(backend):
 
 def chat_completion_options(backend, model=''):
     if backend == 'openrouter':
-        if not is_free_openrouter_model(model) and model != OPENROUTER_BUDGET_MODEL:
+        if not is_free_openrouter_model(model) and model not in OPENROUTER_PAID_MODELS:
             raise ProviderFailure('AI_PRICING_UNAVAILABLE', 'Тариф модели OpenRouter не проверен.')
         free = is_free_openrouter_model(model)
         # Fail rather than fall back, relax privacy or exceed the verified price.
+        prompt_price, completion_price = ((0, 0) if free else
+            (0.065, 0.26) if model == OPENROUTER_QWEN_MODEL else (0.10, 0.40))
         options = {'max_tokens': 8192, 'stream': False, 'provider': {
             'allow_fallbacks': False, 'require_parameters': True,
             'data_collection': 'deny',
-            'max_price': {'prompt': 0 if free else 0.10, 'completion': 0 if free else 0.40,
-                          'request': 0, 'image': 0 if free else 0.0000001},
+            'max_price': {'prompt': prompt_price, 'completion': completion_price,
+                          'request': 0, 'image': 0 if free or model == OPENROUTER_QWEN_MODEL else 0.0000001},
         }}
         if not free:
             options['reasoning'] = {'enabled': False}
@@ -197,8 +201,8 @@ def endpoint_configuration(organization):
         if backend == 'nvidia' and endpoint != NVIDIA_ENDPOINT:
             result['reason'] = 'Для NVIDIA укажите endpoint https://integrate.api.nvidia.com/v1.'
             return result
-        if backend == 'openrouter' and (endpoint != OPENROUTER_ENDPOINT or not (is_free_openrouter_model(model) or model == OPENROUTER_BUDGET_MODEL)):
-            result['reason'] = 'Для OpenRouter укажите https://openrouter.ai/api/v1 и проверенную модель Gemini 2.5 Flash-Lite либо бесплатную модель (:free / openrouter/free).'
+        if backend == 'openrouter' and (endpoint != OPENROUTER_ENDPOINT or not (is_free_openrouter_model(model) or model in OPENROUTER_PAID_MODELS)):
+            result['reason'] = 'Для OpenRouter укажите https://openrouter.ai/api/v1 и проверенную модель Gemini или Qwen либо бесплатную модель (:free / openrouter/free).'
             return result
     except (ValueError, TypeError):
         result['reason'] = 'Настройки провайдера некорректны.'

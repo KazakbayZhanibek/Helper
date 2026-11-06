@@ -1,7 +1,8 @@
 """Explicit, bounded real-video acceptance run. No automatic retries.
 
 Uses existing uploaded sources and the application's real budget ledger.
-At most two short videos, one model call each, and $0.026 reserved in total.
+At most two short videos, one model call each. Paid: $0.013 per video;
+an explicitly selected :free model is restricted to zero-priced routes.
 The report must not already exist; this script never applies model suggestions.
 """
 import argparse
@@ -16,10 +17,36 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from dev import load_environment
 
 
+def select_model(value):
+    from ai_drafts.providers import OPENROUTER_BUDGET_MODEL, OPENROUTER_QWEN_MODEL, is_free_openrouter_model
+    if value is None:
+        return OPENROUTER_BUDGET_MODEL, 13000
+    if value == OPENROUTER_QWEN_MODEL:
+        return value, 13000
+    if not is_free_openrouter_model(value) or not value.endswith(':free'):
+        raise ValueError('Select one explicit OpenRouter :free ID or the approved Qwen model.')
+    return value, 0
+
+
+def validate_receipts(receipts, model, max_cost):
+    if len(receipts) != 1:
+        raise RuntimeError('Expected exactly one recorded model call.')
+    receipt = receipts[0]
+    if receipt['provider'] != 'openrouter' or receipt['model'] != model:
+        raise RuntimeError('Receipt did not match the selected OpenRouter model.')
+    if max_cost == 0:
+        if (receipt['unit'] != 'calls' or receipt['max_units'] != 1
+                or receipt['usage'].get('cost_microusd', 0) != 0):
+            raise RuntimeError('Free-model receipt exceeded its zero-cost route.')
+    elif receipt['unit'] != 'usd_micros' or receipt['max_units'] > max_cost:
+        raise RuntimeError('Paid-model reservation exceeded the specified cap.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--instruction', action='append', required=True)
     parser.add_argument('--report', required=True, type=Path)
+    parser.add_argument('--model', help='Explicit OpenRouter :free model or approved Qwen model for this process only.')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args()
     if not 1 <= len(set(args.instruction)) == len(args.instruction) <= 2:
@@ -39,6 +66,13 @@ def main():
     from media_pipeline.models import ProcessingJob
     from media_pipeline.worker import process_one
     from ai_budget.models import AIUsageReservation
+    try:
+        target_model, max_cost = select_model(args.model)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.model is not None:
+        # A concrete, explicitly approved ID is essential; no dynamic routing.
+        settings.STEP_DRAFT_MODEL = args.model
     settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
     settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
     items = []
@@ -47,14 +81,14 @@ def main():
         if not instruction.source_asset or instruction.source_asset.status != 'ready' or not 0 < instruction.source_asset.duration_ms <= 30000:
             parser.error('Each source must be ready and at most 30 seconds.')
         config = services.capabilities(instruction.organization)
-        if not config['available'] or (config['provider'], config['model']) != ('openrouter', 'google/gemini-2.5-flash-lite'):
-            parser.error('This bounded experiment requires the existing Flash-Lite profile.')
+        if not config['available'] or (config['provider'], config['model']) != ('openrouter', target_model):
+            parser.error('This bounded experiment requires the selected OpenRouter profile.')
         member = Membership.objects.select_related('user', 'organization').filter(organization=instruction.organization, role='admin', is_active=True, user__is_active=True).first()
         if member is None:
             parser.error('An active administrator is required.')
         items.append((instruction, member))
     report = {'experiment': 'demonstrations-v1', 'execute': args.execute, 'max_calls': len(items),
-              'max_reserved_microusd': len(items) * 13000, 'cases': []}
+              'model': target_model, 'max_reserved_microusd': len(items) * max_cost, 'cases': []}
     if not args.execute:
         print(json.dumps(report));return
     if ProcessingJob.objects.filter(state__in=['queued', 'running']).exists():
@@ -78,7 +112,7 @@ def main():
         case = {'instruction_id': str(instruction.id), 'before_revision': before_revision}
         report['cases'].append(case);save()
         result, status = services.request_uploaded(member, instruction.id,
-            {'consent_images': True, 'scope': 'full', 'max_ai_calls': 1, 'max_cost_microusd': 13000}, etag(instruction.working_copy))
+            {'consent_images': True, 'scope': 'full', 'max_ai_calls': 1, 'max_cost_microusd': max_cost}, etag(instruction.working_copy))
         case['queued'] = result;save()
         if not process_one():
             raise RuntimeError('Acceptance worker did not claim a job.')
@@ -86,7 +120,7 @@ def main():
         job = ProcessingJob.objects.filter(instruction=instruction, kind='analyze_video').latest('created_at')
         case.update(job_id=str(job.id), state=job.state, error_code=job.error_code,
                     elapsed_seconds=round(time.monotonic()-started, 3))
-        receipts = list(AIUsageReservation.objects.filter(job_id=job.id).values('state', 'max_units', 'actual_units', 'usage'))
+        receipts = list(AIUsageReservation.objects.filter(job_id=job.id).values('state', 'unit', 'provider', 'model', 'max_units', 'actual_units', 'usage'))
         case['receipts'] = receipts
         instruction.working_copy.refresh_from_db()
         case['working_unchanged'] = instruction.working_copy.revision == before_revision
@@ -95,7 +129,7 @@ def main():
             case['proposal_id'] = str(proposal.id)
             case['result'] = services.proposal_data(proposal)
         save()
-        assert len(receipts) <= 1 and sum(r['max_units'] for r in receipts) <= 13000
+        validate_receipts(receipts, target_model, max_cost)
         assert case['working_unchanged']
         print(json.dumps({key: case[key] for key in ('instruction_id', 'state', 'error_code', 'elapsed_seconds')}, ensure_ascii=False), flush=True)
         if (job.state != 'done' or proposal is None

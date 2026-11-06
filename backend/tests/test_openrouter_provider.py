@@ -18,6 +18,7 @@ from visual_drafts import provider as vision
 pytestmark = pytest.mark.django_db
 FREE = 'openrouter/free'
 PAID = providers.OPENROUTER_BUDGET_MODEL
+QWEN = providers.OPENROUTER_QWEN_MODEL
 
 
 @pytest.fixture(autouse=True)
@@ -77,7 +78,27 @@ def test_unpriced_models_cannot_bypass_routing_or_cash_adapter(team, settings, m
         budget.estimate_call('openrouter', model)
 
 
-@pytest.mark.parametrize('model', [FREE, 'vendor/vision:free', PAID])
+def test_qwen_vision_price_limit_and_shared_cash_account(team, settings):
+    settings.STEP_DRAFT_MODEL = QWEN
+    assert providers.endpoint_configuration(team.org)['available']
+    route = providers.chat_completion_options('openrouter', QWEN)['provider']
+    assert route['max_price'] == {'prompt': 0.065, 'completion': 0.26, 'request': 0, 'image': 0}
+    assert route['allow_fallbacks'] is False
+    assert route['data_collection'] == 'deny'
+    estimate = budget.estimate_call('openrouter', QWEN, 12)
+    assert estimate['unit'] == 'usd_micros'
+    assert estimate['max_input_tokens'] == 32768 + 2048 + 12 * 4096
+    assert estimate['max_units'] == 8588
+    assert estimate['max_units'] <= 13000
+    assert budget.budget_capabilities('openrouter', QWEN)['mode'] == 'usd'
+    assert budget._provider_accounts('openrouter', QWEN) == budget._provider_accounts('openrouter', PAID)
+    session, job, ai, _ = run_fixture(team, QWEN)
+    reservation = budget.reserve(ai, job=job, session=session, call_key='qwen')
+    assert reservation.unit == 'usd_micros' and reservation.max_units == 8588
+    assert any(spec['key'] == 'usd_micros:openrouter-total:v1' for spec in reservation.account_keys)
+
+
+@pytest.mark.parametrize('model', [FREE, 'vendor/vision:free', PAID, QWEN])
 @pytest.mark.parametrize('kind', ['speech', 'vision'])
 def test_real_provider_payload_preserves_frames_schema_and_price_cap(team, settings, monkeypatch, model, kind):
     settings.STEP_DRAFT_MODEL = model
@@ -110,9 +131,9 @@ def test_real_provider_payload_preserves_frames_schema_and_price_cap(team, setti
     routing = body['provider']
     assert routing['require_parameters'] is True and routing['allow_fallbacks'] is False
     assert routing['data_collection'] == 'deny'
-    assert routing['max_price']['prompt'] == (0.10 if model == PAID else 0)
-    assert routing['max_price']['completion'] == (0.40 if model == PAID else 0)
-    if model == PAID:
+    assert routing['max_price']['prompt'] == (0.10 if model == PAID else 0.065 if model == QWEN else 0)
+    assert routing['max_price']['completion'] == (0.40 if model == PAID else 0.26 if model == QWEN else 0)
+    if model in (PAID, QWEN):
         assert body['reasoning'] == {'enabled': False}
     assert receipts[0][0]['resolved_model'] == model
     if kind == 'vision':

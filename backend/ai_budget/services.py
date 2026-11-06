@@ -15,7 +15,8 @@ from django.db import OperationalError, connections, transaction
 from django.db.models import F, Sum, Q
 from django.utils import timezone
 
-from ai_drafts.providers import ProviderFailure, OPENROUTER_ENDPOINT, OPENROUTER_BUDGET_MODEL, is_free_openrouter_model
+from ai_drafts.providers import (ProviderFailure, OPENROUTER_ENDPOINT, OPENROUTER_BUDGET_MODEL,
+                                 OPENROUTER_QWEN_MODEL, OPENROUTER_PAID_MODELS, is_free_openrouter_model)
 from .models import AIUsageReservation, BudgetAccount
 
 PRICING_VERSION = 'openai-gpt-5.4-mini-2026-11-01'
@@ -53,6 +54,17 @@ def estimate_call(provider, model, frames_count=12):
                 'max_input_tokens': tokens, 'max_output_tokens': MAX_OUTPUT_TOKENS,
                 'input_rate_numerator': 1, 'input_rate_denominator': 10,
                 'output_rate_numerator': 2, 'output_rate_denominator': 5}
+    if provider == 'openrouter' and model == OPENROUTER_QWEN_MODEL:
+        # 960x960 JPEG cap; 4096 image tokens is conservative against 32x32
+        # pixels/token plus delimiters: https://www.alibabacloud.com/help/en/model-studio/vision-model/
+        # OpenRouter input/output prices: $0.065/$0.26 per million tokens.
+        tokens = MAX_TEXT_BYTES + PROTOCOL_TOKEN_ALLOWANCE + frames_count * 4096
+        amount = (tokens * 13 + 199) // 200 + (MAX_OUTPUT_TOKENS * 13 + 49) // 50
+        return {'unit': 'usd_micros', 'max_units': amount + 1000,
+                'pricing_version': 'openrouter-qwen3.5-flash-02-23-2026-11-06',
+                'max_input_tokens': tokens, 'max_output_tokens': MAX_OUTPUT_TOKENS,
+                'input_rate_numerator': 13, 'input_rate_denominator': 200,
+                'output_rate_numerator': 13, 'output_rate_denominator': 50}
     if provider != 'openai' or model not in PRICES:
         raise ProviderFailure('AI_PRICING_UNAVAILABLE', 'Для этой модели ещё не настроен проверенный расчёт расходов. Платный запрос не отправлен.')
     input_tokens = MAX_TEXT_BYTES + PROTOCOL_TOKEN_ALLOWANCE + frames_count * MAX_IMAGE_TOKENS
@@ -104,7 +116,7 @@ def _blocked():
 def _provider_accounts(provider, model):
     if provider != 'openrouter':
         return []
-    if model == OPENROUTER_BUDGET_MODEL:
+    if model in OPENROUTER_PAID_MODELS:
         return [('usd_micros:openrouter-total:v1', _setting('OPENROUTER_TOTAL_BUDGET_MICROUSD', 0), 'usd_micros')]
     day = timezone.now().astimezone(datetime_timezone.utc).strftime('%Y-%m-%d')
     return [(f'calls:openrouter-free-day:{day}', min(50, _setting('OPENROUTER_FREE_DAY_CALLS', 50)), 'calls')]
@@ -274,7 +286,7 @@ def budget_snapshot(session):
     configured = endpoint_configuration(session.organization) if hasattr(session, 'organization') else {}
     provider_names = set(reservations.values_list('provider', flat=True))
     active_providers = provider_names or {configured.get('provider')}
-    paid_config = configured.get('provider') == 'openai' or (configured.get('provider') == 'openrouter' and configured.get('model') == OPENROUTER_BUDGET_MODEL)
+    paid_config = configured.get('provider') == 'openai' or (configured.get('provider') == 'openrouter' and configured.get('model') in OPENROUTER_PAID_MODELS)
     mode = ('usd' if 'usd_micros' in units or (not units and paid_config) else
             'free_calls' if 'openrouter' in active_providers else
             'local_calls' if 'ollama' in active_providers else 'subscription_calls')
