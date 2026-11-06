@@ -3,6 +3,7 @@
 The small schema checker below supports only the keywords used by this plan's
 schema. It is not the production validator and does not test the application.
 """
+import argparse
 import json
 import re
 import uuid
@@ -11,6 +12,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
+LOCAL_ARTIFACT_DIRS = ('artifacts/test-results', 'artifacts/test-media', 'artifacts/screenshots')
 
 def validate(value, schema):
     kind = schema.get('type')
@@ -43,6 +45,10 @@ def validate(value, schema):
         assert schema.get('minimum', -10**12) <= value <= schema.get('maximum', 10**12)
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--require-local-artifacts', action='store_true',
+                        help='Also require ignored local reports, screenshots and benchmark media.')
+    args = parser.parse_args()
     tasks = json.loads((ROOT/'planning/tasks.json').read_text())['tasks']
     by_id = {t['id']: t for t in tasks}
     assert len(by_id) == len(tasks) == 72
@@ -66,6 +72,7 @@ def main():
     assert {'FR%02d' % i for i in range(1,31)} <= covered
     assert {'NF%02d' % i for i in range(1,13)} <= covered
     links = 0
+    missing_local_artifacts = []
     # Application dependencies contain unrelated Markdown. Only inspect the
     # original planning documentation; app verification is a separate suite.
     docs = sorted((ROOT/'docs').rglob('*.md'))
@@ -80,6 +87,14 @@ def main():
                 continue
             filepart, _, fragment = target.partition('#')
             dest = (path.parent/unquote(filepart)).resolve() if filepart else path
+            # Local evidence stays outside Git. A source-only checkout can
+            # validate documentation without those private/generated files.
+            # Keep every other missing target (including source files) fatal.
+            if not dest.exists() and not args.require_local_artifacts and any(
+                dest.is_relative_to(ROOT / directory) for directory in LOCAL_ARTIFACT_DIRS
+            ):
+                missing_local_artifacts.append({'document': str(path.relative_to(ROOT)), 'target': target})
+                continue
             assert dest.exists(), (path.name, target)
             if fragment and re.fullmatch(r't\d{3}', fragment):
                 assert '<a id="'+fragment+'"></a>' in dest.read_text(), target
@@ -100,6 +115,7 @@ def main():
     assert totals['D0'] == 308 and totals['D1'] == 99 and totals['D2'] == 7
     print(json.dumps({'result':'PASS', 'scope':'planning artifacts only',
                       'markdown_files':len(docs), 'local_links':links,
+                      'missing_local_artifacts':missing_local_artifacts,
                       'tasks':len(tasks), 'requirements':len(covered),
                       'cycles':0, 'hours':dict(totals),
                       'schema_example':'valid for all used keywords; evidence/time checked'},
