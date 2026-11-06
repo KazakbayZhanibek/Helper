@@ -28,6 +28,7 @@ export type Step = {
   evidence_segment_ids: string[];
   evidence_frame_ids?: string[];
   evidence_frames?: VisualFrame[];
+  photo_demonstration?: { frame_id: string; caption: string }[];
   evidence_visual_session_id?: string | null;
   evidence_transcript_revision?: number | null;
   warning_codes?: string[];
@@ -258,6 +259,7 @@ export type VisualProposalStep = {
   end_ms: number;
   evidence_frame_ids: string[];
   observation_ids?: string[];
+  photo_demonstration?: { frame_id: string; caption: string }[];
 };
 export type VisualProposal = {
   id: string;

@@ -30,7 +30,7 @@ class ProposalsView(APIView):
     def get(self, request, org_id, instruction_id):
         member = core.membership(request.user, org_id, core.WRITERS)
         instruction = core.instruction_for(member, instruction_id)
-        proposals = instruction.draft_proposals.select_related('transcript').filter(organization=member.organization, transcript__asset_id=instruction.source_asset_id)[:20]
+        proposals = instruction.draft_proposals.select_related('transcript').filter(organization=member.organization, transcript__asset_id=instruction.source_asset_id, archived_at__isnull=True)[:20]
         return Response({'items': [services.proposal_data(proposal, instruction) for proposal in proposals]})
 
     def post(self, request, org_id, instruction_id):

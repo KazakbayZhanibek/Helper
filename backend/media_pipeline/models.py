@@ -37,6 +37,7 @@ class ProcessingJob(TenantEntity):
     asset = models.ForeignKey('core.MediaAsset', null=True, blank=True, on_delete=models.PROTECT, related_name='processing_jobs')
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     kind = models.CharField(max_length=20)
+    archived_at = models.DateTimeField(null=True, blank=True)
     state = models.CharField(max_length=12, default='queued')
     stage = models.CharField(max_length=64, default='queued')
     attempts = models.PositiveSmallIntegerField(default=0)

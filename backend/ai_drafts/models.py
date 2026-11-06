@@ -60,6 +60,7 @@ class DraftProposal(TenantEntity):
     input_sha256 = models.CharField(max_length=64)
     config_version = models.CharField(max_length=32, default='steps-v1')
     applied_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     applied_by = models.ForeignKey('core.User', null=True, on_delete=models.SET_NULL, related_name='+')
 
     class Meta:

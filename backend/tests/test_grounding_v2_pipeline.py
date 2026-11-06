@@ -60,7 +60,7 @@ def normalized(source, *, motion='observed'):
                              expected_version='3', expected_coverage='v1', expected_grounding='v2')
 
 
-@pytest.mark.parametrize('job_pin,session_pin', [('v2', 'v1'), ('v1', 'v2'), (None, 'v2'), ('v2', None), ('v3', 'v3')])
+@pytest.mark.parametrize('job_pin,session_pin', [('v2', 'v1'), ('v1', 'v2'), (None, 'v2'), ('v2', None), ('future', 'future')])
 def test_contract_versions_cannot_be_upgraded_or_downgraded(job_pin, session_pin):
     selected = pinned_session(session_pin)
     with pytest.raises(ProcessingFailure):

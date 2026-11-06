@@ -48,7 +48,7 @@ def grounded_wire(source, *, unclear=False):
     return value
 
 
-@pytest.mark.parametrize('job_pin,session_pin', [(None, 'v1'), ('v1', None), ('v3', 'v3'), ('v2', 'v1')])
+@pytest.mark.parametrize('job_pin,session_pin', [(None, 'v1'), ('v1', None), ('future', 'future'), ('v2', 'v1')])
 def test_changed_or_missing_grounding_pin_is_rejected(job_pin, session_pin):
     selected = pinned_session(frame_grounding=session_pin)
     payload = {**selected.analysis_budget, 'frame_grounding': job_pin}
@@ -117,7 +117,7 @@ def test_completed_legacy_window_cannot_acquire_grounding():
 
 @pytest.mark.parametrize('mode,protocol,coverage,pin', [
     ('live', '3', 'v1', 'v1'), ('upload', '2', None, 'v1'),
-    ('upload', '3', None, 'v1'), ('upload', '3', 'v1', 'v3'),
+    ('upload', '3', None, 'v1'), ('upload', '3', 'v1', 'future'),
 ])
 def test_request_contract_rejects_illegal_combination(mode, protocol, coverage, pin):
     with pytest.raises(ProviderFailure, match='VISUAL_PROTOCOL_INVALID'):

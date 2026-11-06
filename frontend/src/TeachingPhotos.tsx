@@ -108,12 +108,14 @@ export function TeachingPhotos({
   label,
   onJump,
   compact = false,
+  captions = {},
 }: {
   frames: readonly TeachingPhotoFrame[];
   ids: readonly string[];
   label: string;
   onJump?: (ms: number) => void;
   compact?: boolean;
+  captions?: Readonly<Record<string, string>>;
 }) {
   const [opened, setOpened] = useState<TeachingPhotoFrame | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -159,6 +161,7 @@ export function TeachingPhotos({
                   <span className="teaching-photo-zoom-label">Увеличить</span>
                 </button>
                 <figcaption>
+                  {captions[frame.id] && <p>{captions[frame.id]}</p>}
                   <span>Фото {index + 1}</span>
                   {timestamp !== null &&
                     (onJump ? (

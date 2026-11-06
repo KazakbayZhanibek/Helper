@@ -77,10 +77,11 @@ export function VisualTeachingStep({
       </div>
       <TeachingPhotos
         frames={proposal.frames}
-        ids={step.evidence_frame_ids}
+        ids={step.photo_demonstration?.map((photo) => photo.frame_id) ?? step.evidence_frame_ids}
         label={step.title}
         onJump={onJump}
-        compact
+        captions={Object.fromEntries((step.photo_demonstration ?? []).map((photo) => [photo.frame_id, photo.caption]))}
+        compact={!step.photo_demonstration?.length}
       />
       <VisualActionEvidence proposal={proposal} step={step} onJump={onJump} />
       <StepGaps proposal={proposal} step={step} onJump={onJump} />

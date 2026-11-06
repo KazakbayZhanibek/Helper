@@ -95,7 +95,7 @@ def step_evidence_frames(step):
 
 
 def step_data(step):
-    return {'id': str(step.id), 'ordinal': step.ordinal, 'title': step.title, 'description': step.description, 'start_ms': step.start_ms, 'end_ms': step.end_ms, 'origin': step.origin, 'checked': step.checked_by_id is not None, 'checked_by': str(step.checked_by_id) if step.checked_by_id else None, 'evidence_segment_ids': step.evidence_segment_ids, 'evidence_transcript_revision': step.evidence_transcript_revision, 'evidence_frame_ids': step.evidence_frame_ids, 'evidence_visual_session_id': str(step.evidence_visual_session_id) if step.evidence_visual_session_id else None, 'evidence_frames': step_evidence_frames(step), 'warning_codes': step.warning_codes}
+    return {'id': str(step.id), 'ordinal': step.ordinal, 'title': step.title, 'description': step.description, 'start_ms': step.start_ms, 'end_ms': step.end_ms, 'origin': step.origin, 'checked': step.checked_by_id is not None, 'checked_by': str(step.checked_by_id) if step.checked_by_id else None, 'evidence_segment_ids': step.evidence_segment_ids, 'evidence_transcript_revision': step.evidence_transcript_revision, 'evidence_frame_ids': step.evidence_frame_ids, 'photo_demonstration': step.photo_demonstration, 'evidence_visual_session_id': str(step.evidence_visual_session_id) if step.evidence_visual_session_id else None, 'evidence_frames': step_evidence_frames(step), 'warning_codes': step.warning_codes}
 
 
 def working_data(working):
@@ -239,7 +239,7 @@ def validate_steps(data, working):
         value = {'id': step_id, 'title': text_field(raw, 'title', 3, 120), 'description': text_field(raw, 'description', 1, 2000), 'start_ms': start, 'end_ms': end}
         if prior:
             changed = any(value[key] != getattr(prior, key) for key in ['title', 'description', 'start_ms', 'end_ms'])
-            value.update(origin='ai_edited' if changed and prior.origin in {'ai', 'ai_edited'} else prior.origin, evidence_segment_ids=evidence, evidence_transcript_revision=prior.evidence_transcript_revision, evidence_frame_ids=frames, evidence_visual_session_id=prior.evidence_visual_session_id, warning_codes=prior.warning_codes)
+            value.update(origin='ai_edited' if changed and prior.origin in {'ai', 'ai_edited'} else prior.origin, evidence_segment_ids=evidence, evidence_transcript_revision=prior.evidence_transcript_revision, evidence_frame_ids=frames, photo_demonstration=prior.photo_demonstration, evidence_visual_session_id=prior.evidence_visual_session_id, warning_codes=prior.warning_codes)
         validated.append(value)
     return validated
 
@@ -379,7 +379,7 @@ def create_draft(member, instruction_id, data):
         working.steps.all().delete()
         for i, source in enumerate(snapshot['steps']):
             values = {key: source[key] for key in ['id', 'title', 'description', 'start_ms', 'end_ms']}
-            values.update({key: source[key] for key in ['origin', 'evidence_segment_ids', 'evidence_transcript_revision', 'evidence_frame_ids', 'evidence_visual_session_id', 'warning_codes'] if key in source})
+            values.update({key: source[key] for key in ['origin', 'evidence_segment_ids', 'evidence_transcript_revision', 'evidence_frame_ids', 'photo_demonstration', 'evidence_visual_session_id', 'warning_codes'] if key in source})
             WorkingStep.objects.create(organization=member.organization, working_copy=working, ordinal=i + 1, **values)
         bump(working)
         audit(member, 'draft.created', instruction)

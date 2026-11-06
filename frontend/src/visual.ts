@@ -19,6 +19,7 @@ export function visualValidationFailures(
 
 export function visualResultSummary(proposal: VisualProposal): {
   kind:
+    | "connection_failed"
     | "applied"
     | "validation_failed"
     | "insufficient_evidence"
@@ -33,6 +34,12 @@ export function visualResultSummary(proposal: VisualProposal): {
       kind: "applied",
       title: "Результат анализа сохранён",
       message: "",
+    };
+  if (proposal.analysis?.windows?.some((window) => window.error_code === "AI_AUTH_FAILED"))
+    return {
+      kind: "connection_failed",
+      title: "ИИ-сервис не принял API-ключ",
+      message: "Обновите ключ подключения на сервере. Для этого фрагмента разбор не получен; повторный запрос автоматически не запускается.",
     };
   if (visualValidationFailures(proposal.analysis))
     return {

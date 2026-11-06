@@ -15,7 +15,7 @@ def intervals(start_ms, end_ms, width=OVERVIEW_WINDOW_MS):
 
 
 def needs_refinement(content):
-    if content.get('frame_grounding', {}).get('version') in ('v1', 'v2'):
+    if content.get('frame_grounding', {}).get('version') in ('v1', 'v2', 'v3'):
         # This mode improves verification inside the same call allowance.
         # Unknown facts require human review, never an automatic extra pass.
         return False
@@ -158,7 +158,7 @@ def aggregate_content(session, windows, *, stop_code=''):
     checking = review_enabled(session) if hasattr(session, 'mode') else False
     budget = getattr(session, 'analysis_budget', {})
     grounding_pin = budget.get('frame_grounding')
-    if grounding_pin not in (None, 'v1', 'v2') or (grounding_pin and (
+    if grounding_pin not in (None, 'v1', 'v2', 'v3') or (grounding_pin and (
             getattr(session, 'mode', None) != 'upload' or budget.get('visual_protocol') != '3'
             or budget.get('short_action_coverage') != 'v1' or budget.get('semantic_review'))):
         from media_pipeline.exceptions import ProcessingFailure
@@ -198,7 +198,8 @@ def aggregate_content(session, windows, *, stop_code=''):
                     from media_pipeline.exceptions import ProcessingFailure
                     raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Проверка кадров не содержит исходных фактов.')
                 for batch in batches:
-                    required = (('frame_ids', 'actions', 'cut_after_image_indices', 'rejected_observation_ids')
+                    required = (('frame_ids', 'wire') if grounding_pin == 'v3' else
+                                ('frame_ids', 'actions', 'cut_after_image_indices', 'rejected_observation_ids')
                                 if grounding_pin == 'v2' else ('entities', 'states', 'observation_links'))
                     if (not isinstance(batch, dict) or not isinstance(batch.get('id'), str) or not batch['id']
                             or any(name not in batch for name in required)

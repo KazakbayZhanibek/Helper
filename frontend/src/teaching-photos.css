@@ -89,6 +89,14 @@
   padding: 4px 0;
   font-size: 11px;
 }
+.teaching-photo-grid figcaption > p {
+  flex-basis: 100%;
+  margin: 4px 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .teaching-photo-unavailable {
   display: grid;
   place-content: center;

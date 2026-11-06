@@ -36,7 +36,7 @@ def protocol_for_job(job, session):
             or (coverage and (protocol != '3' or session.mode != 'upload' or review))):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим разбора переходов не соответствует сеансу анализа.')
     grounding = session.analysis_budget.get('frame_grounding')
-    if (grounding != job.payload.get('frame_grounding') or grounding not in (None, 'v1', 'v2')
+    if (grounding != job.payload.get('frame_grounding') or grounding not in (None, 'v1', 'v2', 'v3')
             or (grounding and (protocol != '3' or session.mode != 'upload' or coverage != 'v1' or review))):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим проверки фактов кадров не соответствует сеансу анализа.')
     return protocol

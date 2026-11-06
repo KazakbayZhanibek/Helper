@@ -90,6 +90,13 @@ function analysis(errorCode: string | null): VisualAnalysisProgress {
   };
 }
 
+test("authentication failure is not presented as a lack of actions in the video", () => {
+  const summary = visualResultSummary({ ...proposal, steps: [], analysis: analysis("AI_AUTH_FAILED") });
+  assert.equal(summary.kind, "connection_failed");
+  assert.match(summary.title, /API-ключ/);
+  assert.doesNotMatch(summary.message, /качество видео|действий не видно/);
+});
+
 test("a completed job with invalid model output is a failed response, never an empty ready draft", () => {
   for (const errorCode of ["VISUAL_OUTPUT_INVALID", "MODEL_OUTPUT_INVALID"]) {
     const result: VisualProposal = {

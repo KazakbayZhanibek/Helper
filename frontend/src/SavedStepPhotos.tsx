@@ -13,6 +13,7 @@ export function SavedStepPhotos({
 }) {
   const ids = step.evidence_frame_ids || [];
   if (!ids.length) return null;
+  const demonstration = step.photo_demonstration?.filter((photo) => ids.includes(photo.frame_id)) ?? [];
   // Older immutable publications contain IDs only. Never invent their timestamps.
   const frames =
     step.evidence_frames ??
@@ -25,9 +26,10 @@ export function SavedStepPhotos({
       <p className="eyebrow">Фото к шагу</p>
       <TeachingPhotos
         frames={frames}
-        ids={ids}
+        ids={demonstration.length ? demonstration.map((photo) => photo.frame_id) : ids}
         label="Движение на видео"
         onJump={onJump}
+        captions={Object.fromEntries(demonstration.map((photo) => [photo.frame_id, photo.caption]))}
       />
     </section>
   );

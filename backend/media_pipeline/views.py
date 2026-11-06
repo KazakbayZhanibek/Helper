@@ -41,7 +41,7 @@ class InstructionJobsView(APIView):
     def get(self, request, org_id, instruction_id):
         member = s.membership(request.user, org_id, s.WRITERS)
         instruction = s.instruction_for(member, instruction_id)
-        query = ProcessingJob.objects.filter(organization=member.organization, instruction=instruction).select_related('asset').order_by('-created_at')[:100]
+        query = ProcessingJob.objects.filter(organization=member.organization, instruction=instruction, archived_at__isnull=True).select_related('asset').order_by('-created_at')[:100]
         return Response({'items': [jobs.job_data(job) for job in query]})
 
 

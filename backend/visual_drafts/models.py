@@ -54,6 +54,7 @@ class VisualProposal(TenantEntity):
     model = models.CharField(max_length=200)
     content = models.JSONField()
     applied_at = models.DateTimeField(null=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     applied_by = models.ForeignKey('core.User', null=True, on_delete=models.SET_NULL, related_name='+')
 
     class Meta:

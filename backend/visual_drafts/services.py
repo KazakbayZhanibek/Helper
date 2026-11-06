@@ -83,7 +83,7 @@ def evidence_ids(content):
         if 'frame_grounding' in content:
             try:
                 ledger = content['frame_grounding']
-                if (not isinstance(ledger, dict) or ledger.get('version') not in ('v1', 'v2')
+                if (not isinstance(ledger, dict) or ledger.get('version') not in ('v1', 'v2', 'v3')
                         or not isinstance(ledger.get('batches'), list)):
                     raise ValueError()
                 for batch in ledger['batches']:
@@ -110,13 +110,15 @@ def checked_instruction_content(content, frames, session):
     if not isinstance(ledger, dict):
         raise InvalidModelOutput('VISUAL_GROUNDING_PROTOCOL_INVALID')
     actual = ledger.get('version')
-    if (pin not in (None, 'v1', 'v2') or pin != actual
+    if (pin not in (None, 'v1', 'v2', 'v3') or pin != actual
             or (pin and (session.mode != 'upload' or session.analysis_budget.get('visual_protocol') != '3'
                          or session.analysis_budget.get('short_action_coverage') != 'v1'
                          or session.analysis_budget.get('semantic_review')))):
         raise InvalidModelOutput('VISUAL_GROUNDING_PROTOCOL_INVALID')
     if pin:
-        if pin == 'v2':
+        if pin == 'v3':
+            from .demonstrations import reconcile_grounding
+        elif pin == 'v2':
             from .grounding_v2 import reconcile_grounding
         else:
             from .grounding import reconcile_grounding
@@ -194,7 +196,7 @@ def proposal_data(proposal):
 def session_data(session):
     state = 'expired' if session.state == 'active' and session.expires_at <= timezone.now() else session.state
     frames = list(session.frames.order_by('-sequence')[:12])
-    observations = session.proposals.select_related('session__instruction__working_copy', 'session__asset').order_by('-created_at')[:5]
+    observations = session.proposals.filter(archived_at__isnull=True).select_related('session__instruction__working_copy', 'session__asset').order_by('-created_at')[:5]
     return {'id': str(session.id), 'instruction_id': str(session.instruction_id), 'asset_id': str(session.asset_id) if session.asset_id else None, 'mode': session.mode, 'state': state, 'base_working_revision': session.base_working_revision, 'created_at': s.utc(session.created_at), 'expires_at': s.utc(session.expires_at), 'frame_count': session.frames.count(), 'analysis': analysis_data(session) if session.analysis_windows.exists() else None, 'frames': [frame_data(f) for f in reversed(frames)], 'observations': [proposal_data(p) for p in observations]}
 
 
@@ -377,7 +379,7 @@ def request_uploaded(member, instruction_id, data, supplied):
         protocol['short_action_coverage'] = 'v1'
         if getattr(settings, 'VISUAL_FRAME_GROUNDING', False):
             version = getattr(settings, 'VISUAL_FRAME_GROUNDING_VERSION', 'v1')
-            if version not in ('v1', 'v2'):
+            if version not in ('v1', 'v2', 'v3'):
                 s.fail('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим проверки кадров. Проверьте настройки сервера.', 422)
             protocol['frame_grounding'] = version
     elif protocol and getattr(settings, 'VISUAL_SEMANTIC_REVIEW', False):
@@ -419,7 +421,7 @@ def cancel_session(member, session_id):
 
 def proposal_for(member, instruction_id, proposal_id, *, lock=False):
     instruction = s.instruction_for(member, instruction_id, lock=lock)
-    query = VisualProposal.objects.select_related('session__instruction__working_copy', 'session__asset').filter(organization=member.organization, session__instruction=instruction)
+    query = VisualProposal.objects.select_related('session__instruction__working_copy', 'session__asset').filter(organization=member.organization, session__instruction=instruction, archived_at__isnull=True)
     if lock:
         query = query.select_for_update(of=('self',))
     proposal = query.filter(id=proposal_id).first()
@@ -471,7 +473,7 @@ def apply_proposal(member, instruction_id, proposal_id, data, supplied):
         working.steps.update(checked_at=None, checked_by=None)
     warning_codes = sorted({w['code'] for w in content['warnings']})
     fields = ('title', 'description', 'start_ms', 'end_ms', 'evidence_frame_ids')
-    WorkingStep.objects.bulk_create([WorkingStep(organization=member.organization, working_copy=working, ordinal=old_count + index + 1, origin='ai', evidence_visual_session_id=session.id, warning_codes=warning_codes, **{field: step[field] for field in fields}) for index, step in enumerate(steps)])
+    WorkingStep.objects.bulk_create([WorkingStep(organization=member.organization, working_copy=working, ordinal=old_count + index + 1, origin='ai', evidence_visual_session_id=session.id, warning_codes=warning_codes, photo_demonstration=step.get('photo_demonstration', []), **{field: step[field] for field in fields}) for index, step in enumerate(steps)])
     s.bump(working)
     proposal.applied_at, proposal.applied_by = timezone.now(), member.user
     proposal.save(update_fields=['applied_at', 'applied_by', 'updated_at'])

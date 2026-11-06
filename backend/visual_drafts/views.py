@@ -93,7 +93,7 @@ class UploadedProposalsView(APIView):
     def get(self, request, org_id, instruction_id):
         member = core.membership(request.user, org_id, core.WRITERS)
         instruction = core.instruction_for(member, instruction_id)
-        query = VisualProposal.objects.filter(organization=member.organization, session__instruction=instruction, session__mode='upload').select_related('session__instruction__working_copy', 'session__asset')[:20]
+        query = VisualProposal.objects.filter(organization=member.organization, session__instruction=instruction, session__mode='upload', archived_at__isnull=True).select_related('session__instruction__working_copy', 'session__asset')[:20]
         return Response({'items': [s.proposal_data(p) for p in query]})
 
     def post(self, request, org_id, instruction_id):

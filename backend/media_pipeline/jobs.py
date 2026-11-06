@@ -68,7 +68,7 @@ def enqueue_job(member, instruction, kind, payload=None, input_hash=''):
 
 
 def job_for(member, job_id, lock=False):
-    query = ProcessingJob.objects.select_related('asset', 'instruction').filter(organization=member.organization, instruction__lifecycle='active')
+    query = ProcessingJob.objects.select_related('asset', 'instruction').filter(organization=member.organization, instruction__lifecycle='active', archived_at__isnull=True)
     if lock:
         query = query.select_for_update(of=('self',))
     job = query.filter(pk=job_id).first()

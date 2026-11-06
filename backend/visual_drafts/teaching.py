@@ -63,6 +63,10 @@ def present_instruction(content):
     if content.get('schema_version') != '3' or content.get('step_format') != STEP_FORMAT:
         return result
     observations = {item['id']: item for item in content['observations']}
+    demonstrations = {}
+    if content.get('frame_grounding', {}).get('version') == 'v3':
+        from .demonstrations import photo_demonstrations
+        demonstrations = photo_demonstrations(content)
     for step in result['steps']:
         linked = [observations[ref] for ref in step['observation_ids']]
         if not linked or any(describe_action(item, language=content['language'], step_format=STEP_FORMAT)
@@ -74,5 +78,7 @@ def present_instruction(content):
         if len(methods) != 1:
             raise ValueError('Instruction presentation requires one supported method')
         step['description'] = linked[0]['movement']
+        if linked[0]['id'] in demonstrations:
+            step['photo_demonstration'] = demonstrations[linked[0]['id']]
     result['presentation_format'] = PRESENTATION_FORMAT
     return result

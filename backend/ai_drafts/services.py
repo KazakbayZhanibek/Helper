@@ -108,7 +108,7 @@ def request_proposal(member, instruction_id, data, supplied):
 
 def proposal_for(member, instruction_id, proposal_id, lock=False):
     instruction = s.instruction_for(member, instruction_id, lock=lock)
-    query = DraftProposal.objects.select_related('transcript').filter(instruction=instruction, organization=member.organization, transcript__organization=member.organization, transcript__asset_id=instruction.source_asset_id)
+    query = DraftProposal.objects.select_related('transcript').filter(instruction=instruction, organization=member.organization, transcript__organization=member.organization, transcript__asset_id=instruction.source_asset_id, archived_at__isnull=True)
     if lock:
         query = query.select_for_update(of=('self',))
     proposal = query.filter(id=proposal_id).first()

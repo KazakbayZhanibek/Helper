@@ -38,9 +38,12 @@ def request_contract(protocol, language, mode, frames, *, short_action_coverage=
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим анализа. Начните новый сеанс.')
     if short_action_coverage not in (None, 'v1') or (short_action_coverage and (protocol != '3' or mode != 'upload')):
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим разбора переходов. Начните новый сеанс.')
-    if frame_grounding not in (None, 'v1', 'v2') or (frame_grounding and (protocol != '3' or mode != 'upload' or short_action_coverage != 'v1')):
+    if frame_grounding not in (None, 'v1', 'v2', 'v3') or (frame_grounding and (protocol != '3' or mode != 'upload' or short_action_coverage != 'v1')):
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим проверки фактов кадров. Начните новый сеанс.')
-    if frame_grounding == 'v2':
+    if frame_grounding == 'v3':
+        from .demonstrations import SYSTEM as system, bind_schema
+        schema = bind_schema(frames)
+    elif frame_grounding == 'v2':
         from .grounding_v2 import SCHEMA as grounding_schema, SYSTEM as grounding_system
         if not 2 <= len(frames) <= LIMITS['max_analysis_frames']:
             raise ProviderFailure('VISUAL_EVIDENCE_INVALID', 'Для анализа нужны от 2 до 12 кадров.')
@@ -78,7 +81,7 @@ def request_contract(protocol, language, mode, frames, *, short_action_coverage=
                 system = grounding_system
     else:
         schema, system = copy.deepcopy(SCHEMA), SYSTEM
-    if mode == 'upload':
+    if mode == 'upload' and frame_grounding != 'v3':
         system += '\n' + PROCESS_STYLE
     schema.pop('$schema', None)
     schema.pop('$id', None)
@@ -129,10 +132,10 @@ class VisualProvider:
                                           short_action_coverage=self.short_action_coverage,
                                           frame_grounding=self.frame_grounding)
         metadata = ([{'image_index': index, 'timestamp_ms': frame['timestamp_ms']} for index, frame in enumerate(frames, 1)]
-                    if self.frame_grounding == 'v2' else
+                    if self.frame_grounding in ('v2', 'v3') else
                     [{'id': str(frame['id']), 'sequence': frame['sequence'], 'timestamp_ms': frame['timestamp_ms']} for frame in frames])
         request = {'language': language, 'mode': mode, 'sampling': 'discrete_frames', 'frames': metadata}
-        if self.short_action_coverage and self.frame_grounding != 'v2':
+        if self.short_action_coverage and self.frame_grounding not in ('v2', 'v3'):
             from .short_actions import temporal_pairs
             request['temporal_pairs'] = temporal_pairs(frames)
         if self.frame_grounding:
@@ -149,7 +152,7 @@ class VisualProvider:
             return system, schema, request, None
         items = [{'type': 'text', 'text': json.dumps(request, ensure_ascii=False)}]
         for index, frame in enumerate(frames, 1):
-            label = f'image_index={index}' if self.frame_grounding == 'v2' else f"frame_id={frame['id']}"
+            label = f'image_index={index}' if self.frame_grounding in ('v2', 'v3') else f"frame_id={frame['id']}"
             items.append({'type': 'text', 'text': f"{label}; timestamp_ms={frame['timestamp_ms']}"})
             image = {'url': 'data:image/jpeg;base64,' + base64.b64encode(frame['bytes']).decode('ascii')}
             if self.provider == 'openai':
@@ -182,9 +185,11 @@ class VisualProvider:
 
 def validate(value, frames, session, *, expected_version='2', expected_coverage=None, expected_grounding=None):
     if expected_grounding is not None:
-        if expected_version != '3' or expected_coverage != 'v1' or expected_grounding not in ('v1', 'v2') or session.mode != 'upload':
+        if expected_version != '3' or expected_coverage != 'v1' or expected_grounding not in ('v1', 'v2', 'v3') or session.mode != 'upload':
             raise InvalidModelOutput('VISUAL_PROTOCOL_INVALID')
-        if expected_grounding == 'v2':
+        if expected_grounding == 'v3':
+            from .demonstrations import normalize_grounded_actions
+        elif expected_grounding == 'v2':
             from .grounding_v2 import normalize_grounded_actions
         else:
             from .grounding import normalize_grounded_actions

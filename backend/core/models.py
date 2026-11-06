@@ -115,6 +115,7 @@ class WorkingStep(TenantEntity):
     evidence_segment_ids = models.JSONField(default=list)
     evidence_transcript_revision = models.PositiveIntegerField(null=True, blank=True)
     evidence_frame_ids = models.JSONField(default=list)
+    photo_demonstration = models.JSONField(default=list)
     evidence_visual_session_id = models.UUIDField(null=True, blank=True)
     warning_codes = models.JSONField(default=list)
     checked_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
