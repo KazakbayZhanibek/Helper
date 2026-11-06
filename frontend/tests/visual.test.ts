@@ -98,7 +98,7 @@ test("authentication failure is not presented as a lack of actions in the video"
 });
 
 test("a completed job with invalid model output is a failed response, never an empty ready draft", () => {
-  for (const errorCode of ["VISUAL_OUTPUT_INVALID", "MODEL_OUTPUT_INVALID"]) {
+  for (const errorCode of ["VISUAL_OUTPUT_INVALID", "MODEL_OUTPUT_INVALID", "VISUAL_RESPONSE_INCOMPLETE"]) {
     const result: VisualProposal = {
       ...proposal,
       schema_version: "3",

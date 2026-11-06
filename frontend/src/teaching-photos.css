@@ -150,6 +150,11 @@
 .teaching-photo-dialog-caption {
   margin: 12px 0 0;
 }
+.teaching-photo-dialog-description {
+  margin: 12px 0 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 @media (max-width: 420px) {
   .teaching-photo-dialog {
     padding: 12px;

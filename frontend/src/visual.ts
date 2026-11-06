@@ -11,7 +11,7 @@ export function visualValidationFailures(
   return (analysis?.windows || []).filter(
     (window) =>
       window.state === "failed" &&
-      ["VISUAL_OUTPUT_INVALID", "MODEL_OUTPUT_INVALID"].includes(
+      ["VISUAL_OUTPUT_INVALID", "MODEL_OUTPUT_INVALID", "VISUAL_RESPONSE_INCOMPLETE"].includes(
         window.error_code || "",
       ),
   ).length;

@@ -1,5 +1,6 @@
 import { TeachingPhotos } from "./TeachingPhotos";
 import type { Step } from "./types";
+import { editedPhotoWarning } from "./photoPresentation";
 
 /** Published steps preserve action frames, without inferred before/after labels. */
 export function SavedStepPhotos({
@@ -24,6 +25,9 @@ export function SavedStepPhotos({
   return (
     <section className="saved-step-photos" aria-label="Фото к шагу">
       <p className="eyebrow">Фото к шагу</p>
+      {editedPhotoWarning(step.origin) && (
+        <p className="field-hint">Шаг изменён после создания ИИ. Сверьте текст и фотографии с видео.</p>
+      )}
       <TeachingPhotos
         frames={frames}
         ids={demonstration.length ? demonstration.map((photo) => photo.frame_id) : ids}

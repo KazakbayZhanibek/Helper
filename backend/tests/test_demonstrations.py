@@ -5,6 +5,7 @@ import pytest
 from django.utils import timezone
 
 from ai_budget.models import AIUsageReservation
+from ai_drafts.providers import ProviderFailure
 from ai_drafts.validation import InvalidModelOutput
 from visual_drafts import demonstrations as demo, provider, services, planning, worker
 from visual_drafts.models import VisualProposal
@@ -138,6 +139,67 @@ def test_multiwindow_worker_budget_read_and_apply_projection(team, full_video, s
     published=post(team.clients['reviewer'],draft.url+'/publish',{'confirmations':CONFIRMATIONS},etag=reviewed['etag'],key='demo-publish')
     assert published.status_code==201,published.json()
     assert [s['photo_demonstration'] for s in published.json()['snapshot']['steps']]==[s['photo_demonstration'] for s in shown['steps']]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('failure', ['invalid_schema', 'invalid_json', 'incomplete'])
+def test_v3_stops_after_invalid_response_and_keeps_completed_windows(team, full_video, settings, monkeypatch, failure):
+    settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
+    settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
+    calls = []
+
+    class Fake(provider.VisualProvider):
+        provider, model = 'openai', 'gpt-5.4-mini'
+        endpoint = 'https://api.openai.com/v1'
+
+        def __init__(self, organization):
+            pass
+
+        def generate(self, *, frames, **kwargs):
+            calls.append(frames[0]['timestamp_ms'])
+            if len(calls) == 2:
+                if failure == 'invalid_schema':
+                    return {'invalid': True}
+                code = 'MODEL_OUTPUT_INVALID' if failure == 'invalid_json' else 'VISUAL_RESPONSE_INCOMPLETE'
+                raise ProviderFailure(code, 'Некорректный ответ.')
+            return answer(len(frames))
+
+    monkeypatch.setattr(worker, 'VisualProvider', Fake)
+    monkeypatch.setattr(worker, 'uploaded_frames', fake_extraction)
+    job, live = queue(team, full_video, max_ai_calls=3)
+    assert process_one()
+    job.refresh_from_db()
+    assert job.state == 'done'
+    assert calls == [0, 30000]
+    assert AIUsageReservation.objects.count() == 2
+    content = VisualProposal.objects.get().content
+    assert len(content['steps']) == 1
+    assert content['analysis']['windows_completed'] == 1
+    assert content['analysis']['unprocessed_ranges'] == [
+        {'start_ms': 30000, 'end_ms': 60000}, {'start_ms': 60000, 'end_ms': 70000}]
+    assert any(w['code'] == 'analysis_interrupted' and 'некорректный' in w['message'] for w in content['warnings'])
+    assert not live.analysis_windows.filter(parent__isnull=False).exists()
+
+
+@pytest.mark.django_db
+def test_v3_restart_does_not_skip_invalid_checkpoint_to_send_more_requests(team, full_video, settings, monkeypatch):
+    settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
+    settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
+    job, live = queue(team, full_video, max_ai_calls=3)
+    checkpoint = live.analysis_windows.order_by('ordinal').first()
+    checkpoint.state, checkpoint.error_code = 'failed', 'VISUAL_OUTPUT_INVALID'
+    checkpoint.save(update_fields=['state', 'error_code'])
+
+    def unexpected_call(*args, **kwargs):
+        pytest.fail('The next window must not dispatch a model request')
+
+    monkeypatch.setattr(worker, 'uploaded_frames', unexpected_call)
+    assert process_one()
+    job.refresh_from_db()
+    assert job.state == 'done'
+    assert AIUsageReservation.objects.count() == 0
+    assert VisualProposal.objects.get().content['analysis']['windows_completed'] == 0
+    assert live.analysis_windows.filter(state='pending').count() == 2
 
 
 @pytest.mark.django_db

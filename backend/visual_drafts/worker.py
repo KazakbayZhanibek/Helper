@@ -371,6 +371,8 @@ def process_windows(job, session, context):
     provider = provider_for_job(job, session)
     checking = review_enabled(session)
     stop_code = ''
+    stop_on_invalid = session.analysis_budget.get('frame_grounding') == 'v3'
+    invalid_response_codes = {'VISUAL_OUTPUT_INVALID', 'MODEL_OUTPUT_INVALID', 'VISUAL_RESPONSE_INCOMPLETE'}
     overview = list(session.analysis_windows.filter(parent__isnull=True))
     # Persist a checkpoint after each window; all overview windows have priority
     # over optional refinement, so difficult early footage cannot starve the end.
@@ -381,7 +383,16 @@ def process_windows(job, session, context):
             run_window(job, session, window, context, provider)
         except ProviderFailure as error:
             stop_code = error.code
-            if error.code.startswith('AI_'):
+            if error.code.startswith('AI_') or (stop_on_invalid and error.code in invalid_response_codes):
+                publish_progress(job, session, context)
+                break
+        if stop_on_invalid:
+            # Validation failures are recorded by run_window without raising.
+            # Also honor a failed checkpoint after a worker restart: otherwise
+            # the remaining windows could spend money on the same bad format.
+            window.refresh_from_db(fields=['state', 'error_code'])
+            if window.state == 'failed' and window.error_code in invalid_response_codes:
+                stop_code = window.error_code
                 publish_progress(job, session, context)
                 break
         publish_progress(job, session, context)

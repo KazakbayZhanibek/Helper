@@ -249,7 +249,10 @@ def aggregate_content(session, windows, *, stop_code=''):
         if checked < len(selected_for_review):
             warnings.append({'code': 'semantic_review_incomplete', 'message': 'Часть шагов не прошла повторное сопоставление с кадрами: не хватило лимита или проверка не завершилась. Первоначальные предложения сохранены и требуют проверки мастером.'})
     if stop_code:
-        warnings.append({'code': 'budget_limit_reached' if stop_code.startswith('AI_BUDGET') or stop_code == 'AI_CALL_LIMIT' else 'analysis_interrupted', 'message': 'Дополнительные обращения остановлены. Сохранены только уже проверенные ответы; непроверенные моменты требуют просмотра человеком.'})
+        if grounding_pin == 'v3' and stop_code in {'VISUAL_OUTPUT_INVALID', 'MODEL_OUTPUT_INVALID', 'VISUAL_RESPONSE_INCOMPLETE'}:
+            warnings.append({'code': 'analysis_interrupted', 'message': 'ИИ вернул некорректный или незавершённый ответ. Чтобы не тратить бюджет на повторение ошибки, оставшиеся фрагменты не отправлены; проверьте их вручную. Успешные результаты сохранены.'})
+        else:
+            warnings.append({'code': 'budget_limit_reached' if stop_code.startswith('AI_BUDGET') or stop_code == 'AI_CALL_LIMIT' else 'analysis_interrupted', 'message': 'Дополнительные обращения остановлены. Сохранены только уже проверенные ответы; непроверенные моменты требуют просмотра человеком.'})
     if unresolved_refinements:
         warnings.append({'code': 'refinement_unresolved', 'message': 'Дополнительный просмотр не дал достаточно уверенного уточнения. Сохранено исходное наблюдение; проверьте этот момент по видео.'})
     unresolved = any(window.state == 'completed' and needs_refinement(effective_content(window)) and not any(child.parent_id == window.id for child in windows) for window in overview)

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatMsExact } from "./format";
 import type { VisualFrame } from "./types";
+import { photoAlternative } from "./photoPresentation";
 import "./teaching-photos.css";
 
 export type TeachingPhotoFrame = Pick<VisualFrame, "id" | "url"> &
@@ -42,11 +43,13 @@ function PhotoImage({
 function PhotoViewer({
   frame,
   label,
+  caption,
   onClose,
   onJump,
 }: {
   frame: TeachingPhotoFrame;
   label: string;
+  caption?: string;
   onClose: () => void;
   onJump?: (ms: number) => void;
 }) {
@@ -77,8 +80,9 @@ function PhotoViewer({
       <PhotoImage
         key={`${frame.id}:${frame.url}`}
         frame={frame}
-        label={label}
+        label={photoAlternative(label, caption)}
       />
+      {caption && <p className="teaching-photo-dialog-description">{caption}</p>}
       {timestamp !== null && (
         <p className="teaching-photo-dialog-caption">
           {onJump ? (
@@ -150,13 +154,13 @@ export function TeachingPhotos({
                 <button
                   type="button"
                   className="teaching-photo-zoom"
-                  aria-label={`Увеличить: ${photoLabel}`}
+                  aria-label={`Увеличить: ${photoAlternative(photoLabel, captions[frame.id])}`}
                   onClick={() => setOpened(frame)}
                 >
                   <PhotoImage
                     key={`${frame.id}:${frame.url}`}
                     frame={frame}
-                    label={photoLabel}
+                    label={photoAlternative(photoLabel, captions[frame.id])}
                   />
                   <span className="teaching-photo-zoom-label">Увеличить</span>
                 </button>
@@ -208,6 +212,7 @@ export function TeachingPhotos({
         <PhotoViewer
           frame={opened}
           label={label}
+          caption={captions[opened.id]}
           onClose={() => setOpened(null)}
           onJump={onJump}
         />

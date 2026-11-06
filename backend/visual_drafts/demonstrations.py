@@ -100,7 +100,9 @@ def normalize_grounded_actions(value, frames, session):
             raise InvalidModelOutput('VISUAL_EVIDENCE_ORDER_INVALID')
         if any(not action[field].strip() for field in ('subject', 'title', 'change', 'instruction')) or any(not m['visible'].strip() for m in action['moments']):
             raise InvalidModelOutput('VISUAL_OUTPUT_INVALID')
-        crossed_cut = any(indices[0] <= start and indices[-1] >= end for start, end in cuts)
+        # Frame intervals share a transition only if their interiors overlap.
+        # Merely touching at one boundary frame is safe; any shared pair is not.
+        crossed_cut = any(indices[0] < end and start < indices[-1] for start, end in cuts)
         if action['kind'] != 'action' or crossed_cut or _DENIAL.search(action['instruction']) or uncertain_command({'kind': 'action', 'movement': action['instruction']}):
             if action['kind'] != 'support':
                 wire['gaps'].append({'reason': 'unclear_action', 'description': 'Уточните по этому фрагменту способ выполнения действия.', 'evidence_frame_ids': evidence})
