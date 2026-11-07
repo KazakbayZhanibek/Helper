@@ -5,6 +5,7 @@ import pytest
 
 from ai_drafts.validation import InvalidModelOutput
 from core.services import etag
+from media_pipeline.exceptions import ProcessingFailure
 from media_pipeline.worker import process_one
 from visual_drafts import demonstrations as demo, provider, services, worker
 from visual_drafts.models import VisualProposal
@@ -73,6 +74,15 @@ def test_all_rejected_actions_remain_a_review_question_not_a_fake_step():
     assert demo.reconcile_grounding(content, source, session_with_recovery()) == content
 
 
+def test_span_session_rejects_checkpoint_from_old_wire():
+    session = session_with_recovery()
+    session.analysis_budget['demonstration_wire'] = demo.SPAN_WIRE_VERSION
+    checkpoint = {'frame_grounding': {'version': 'v3', 'batches': [{'wire': answer(3)}]}}
+    with pytest.raises(ProcessingFailure) as error:
+        worker.check_grounding_checkpoint(checkpoint, session, window=True)
+    assert error.value.code == 'VISUAL_PROTOCOL_INVALID'
+
+
 @pytest.mark.parametrize('gap', [
     {'from_image_index': 3, 'to_image_index': 2, 'reason': 'cut', 'question': 'Переход?'},
     {'from_image_index': 1, 'to_image_index': 13, 'reason': 'cut', 'question': 'Переход?'},
@@ -120,3 +130,46 @@ def test_worker_stores_wire_but_api_and_apply_exclude_invalid_action(team, full_
     assert response.status_code == 200, response.json()
     assert 'СЕКРЕТН' not in json.dumps(response.json(), ensure_ascii=False)
     assert len(response.json()['steps']) == 3
+
+
+@pytest.mark.django_db
+def test_span_wire_is_pinned_and_worker_applies_the_same_two_photos(team, full_video, settings, monkeypatch):
+    settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
+    settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
+    settings.VISUAL_DEMONSTRATION_SPANS = True
+
+    class Fake(provider.VisualProvider):
+        provider, model = 'openai', 'gpt-5.4-mini'
+        endpoint = 'https://api.openai.com/v1'
+
+        def __init__(self, organization):
+            pass
+
+        def generate(self, *, frames, **kwargs):
+            assert self.demonstration_wire == demo.SPAN_WIRE_VERSION
+            return {'schema_version': demo.SPAN_WIRE_VERSION, 'language': 'ru', 'gaps': [], 'actions': [{
+                'subject': 'Крышка', 'title': 'Поднимаем крышку', 'frame_pair': '1-2', 'kind': 'action',
+                'before': 'Крышка лежит на коробке.', 'after': 'Крышка в руке над коробкой.',
+                'change': 'Крышка над коробкой.', 'instruction': 'Берём крышку за край и поднимаем её.',
+            }]}
+
+    monkeypatch.setattr(worker, 'VisualProvider', Fake)
+    monkeypatch.setattr(worker, 'uploaded_frames', fake_extraction)
+    job, session = queue(team, full_video, max_ai_calls=3)
+    assert session.analysis_budget['demonstration_wire'] == job.payload['demonstration_wire'] == demo.SPAN_WIRE_VERSION
+    # Workers must use the queued policy even if the setting changes before execution.
+    settings.VISUAL_DEMONSTRATION_SPANS = False
+    assert process_one()
+    job.refresh_from_db()
+    assert job.state == 'done'
+    proposal = VisualProposal.objects.get()
+    shown = services.proposal_data(proposal)
+    assert shown['can_apply'] and len(shown['steps']) == 3
+    photos = [step['photo_demonstration'] for step in shown['steps']]
+    for step, pair in zip(shown['steps'], photos):
+        assert [photo['frame_id'] for photo in pair] == step['evidence_frame_ids']
+        assert len(set(step['evidence_frame_ids'])) == 2
+    response = post(team.clients['author'], full_video.url + f'/visual-proposals/{proposal.id}/apply',
+                    {'confirm_replace': True}, etag=etag(full_video.working), key='pair-apply')
+    assert response.status_code == 200, response.json()
+    assert [step['photo_demonstration'] for step in response.json()['steps']] == photos

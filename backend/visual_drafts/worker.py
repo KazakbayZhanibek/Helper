@@ -43,6 +43,13 @@ def protocol_for_job(job, session):
     if (recovery != job.payload.get('action_order_recovery') or recovery not in (None, 'drop_invalid_order_v1')
             or (recovery and grounding != 'v3')):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим проверки порядка кадров не соответствует сеансу анализа.')
+    wire = session.analysis_budget.get('demonstration_wire')
+    if wire != job.payload.get('demonstration_wire'):
+        raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Формат привязки к кадрам не соответствует сеансу анализа.')
+    if wire is not None:
+        from .demonstrations import SPAN_WIRE_VERSION
+        if grounding != 'v3' or wire != SPAN_WIRE_VERSION:
+            raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
     return protocol
 
 
@@ -62,6 +69,13 @@ def check_grounding_checkpoint(content, session, *, window=False):
                or any(not isinstance(batch.get(name), list) for name in required)
                for batch in grounding['batches']):
             raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Сохранённая проверка кадров повреждена.')
+    if expected == 'v3':
+        from .demonstrations import WIRE_VERSION
+        wire_version = session.analysis_budget.get('demonstration_wire', WIRE_VERSION)
+        for batch in grounding['batches']:
+            wire = batch.get('wire') if isinstance(batch, dict) else None
+            if not isinstance(wire, dict) or wire.get('schema_version') != wire_version:
+                raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Сохранённый результат использует другой формат привязки к кадрам.')
 
 
 def provider_for_job(job, session, *, images=None):
@@ -69,6 +83,7 @@ def provider_for_job(job, session, *, images=None):
     provider.protocol = protocol_for_job(job, session)
     provider.short_action_coverage = session.analysis_budget.get('short_action_coverage')
     provider.frame_grounding = session.analysis_budget.get('frame_grounding')
+    provider.demonstration_wire = session.analysis_budget.get('demonstration_wire')
     if provider.protocol == '3' and images is not None:
         # A deterministic local input/schema failure must not consume a receipt
         # or be mistaken for an unknown dispatched model call.

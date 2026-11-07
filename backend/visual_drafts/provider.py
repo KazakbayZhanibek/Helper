@@ -32,7 +32,8 @@ kind=state не должен скрывать действие: если пре�
 У каждого action проверь минимум два последовательных action_frame_ids; before/after не заменяют их. Если доступны только один кадр движения и общий контекст, укажи gap вместо неподтверждённой операции. Не расширяй ссылки ради прохождения проверки.'''
 
 
-def request_contract(protocol, language, mode, frames, *, short_action_coverage=None, frame_grounding=None):
+def request_contract(protocol, language, mode, frames, *, short_action_coverage=None, frame_grounding=None,
+                     demonstration_wire=None):
     """Bind one pinned contract to the actual frame IDs, never global runtime flags."""
     if protocol not in {'2', '3'} or mode not in {'live', 'upload'}:
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим анализа. Начните новый сеанс.')
@@ -40,9 +41,14 @@ def request_contract(protocol, language, mode, frames, *, short_action_coverage=
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим разбора переходов. Начните новый сеанс.')
     if frame_grounding not in (None, 'v1', 'v2', 'v3') or (frame_grounding and (protocol != '3' or mode != 'upload' or short_action_coverage != 'v1')):
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим проверки фактов кадров. Начните новый сеанс.')
+    if demonstration_wire is not None and frame_grounding != 'v3':
+        raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
     if frame_grounding == 'v3':
-        from .demonstrations import SYSTEM as system, bind_schema
-        schema = bind_schema(frames)
+        from .demonstrations import SPAN_WIRE_VERSION, WIRE_VERSION, bind_schema, system_for_wire
+        if demonstration_wire not in (None, SPAN_WIRE_VERSION):
+            raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
+        wire_version = demonstration_wire or WIRE_VERSION
+        system, schema = system_for_wire(wire_version), bind_schema(frames, wire_version=wire_version)
     elif frame_grounding == 'v2':
         from .grounding_v2 import SCHEMA as grounding_schema, SYSTEM as grounding_system
         if not 2 <= len(frames) <= LIMITS['max_analysis_frames']:
@@ -118,6 +124,7 @@ class VisualProvider:
     protocol = '2'
     short_action_coverage = None
     frame_grounding = None
+    demonstration_wire = None
 
     def __init__(self, organization):
         config = capabilities(organization)
@@ -130,7 +137,8 @@ class VisualProvider:
         """Pure local preparation; workers can check v3 bounds before reserving a call."""
         system, schema = request_contract(self.protocol, language, mode, frames,
                                           short_action_coverage=self.short_action_coverage,
-                                          frame_grounding=self.frame_grounding)
+                                          frame_grounding=self.frame_grounding,
+                                          demonstration_wire=self.demonstration_wire)
         metadata = ([{'image_index': index, 'timestamp_ms': frame['timestamp_ms']} for index, frame in enumerate(frames, 1)]
                     if self.frame_grounding in ('v2', 'v3') else
                     [{'id': str(frame['id']), 'sequence': frame['sequence'], 'timestamp_ms': frame['timestamp_ms']} for frame in frames])

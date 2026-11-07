@@ -391,6 +391,9 @@ def request_uploaded(member, instruction_id, data, supplied):
             if version == 'v3':
                 protocol['presentation_policy'] = 'cautious_v1'
                 protocol['action_order_recovery'] = 'drop_invalid_order_v1'
+                if getattr(settings, 'VISUAL_DEMONSTRATION_SPANS', False):
+                    from .demonstrations import SPAN_WIRE_VERSION
+                    protocol['demonstration_wire'] = SPAN_WIRE_VERSION
     elif protocol and getattr(settings, 'VISUAL_SEMANTIC_REVIEW', False):
         protocol['semantic_review'] = 'v1'
     session = VisualSession.objects.create(organization=member.organization, instruction=instruction, asset=asset, created_by=member.user, mode='upload', consent_images=True, base_working_revision=working.revision, language=working.language, expires_at=timezone.now() + timedelta(hours=6), window_start_ms=start, window_end_ms=end, analysis_scope=scope, analysis_budget={'max_calls': calls, 'max_cost_microusd': cost, **protocol})
@@ -408,6 +411,8 @@ def request_uploaded(member, instruction_id, data, supplied):
         payload['frame_grounding'] = protocol['frame_grounding']
     if protocol.get('action_order_recovery'):
         payload['action_order_recovery'] = protocol['action_order_recovery']
+    if protocol.get('demonstration_wire'):
+        payload['demonstration_wire'] = protocol['demonstration_wire']
     job = enqueue_job(member, instruction, 'analyze_video', payload=payload, input_hash=fingerprint({**payload, 'start_ms': start, 'end_ms': end, 'working_revision': working.revision}))
     job.result = {'visual_session_id': str(session.id), 'analysis': analysis_data(session)}
     job.save(update_fields=['result', 'updated_at'])

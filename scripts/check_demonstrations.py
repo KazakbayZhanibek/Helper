@@ -48,6 +48,7 @@ def main():
     parser.add_argument('--instruction', action='append', required=True)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--model', help='Explicit OpenRouter :free model or approved Qwen model for this process only.')
+    parser.add_argument('--span-wire', action='store_true', help='Test the distinct frame-pair contract.')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args()
     if not 1 <= len(set(args.instruction)) == len(args.instruction) <= 2:
@@ -76,6 +77,7 @@ def main():
         settings.STEP_DRAFT_MODEL = args.model
     settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
     settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
+    settings.VISUAL_DEMONSTRATION_SPANS = args.span_wire
     items = []
     for identity in args.instruction:
         instruction = Instruction.objects.select_related('source_asset', 'working_copy', 'organization').get(pk=identity, lifecycle='active')
@@ -88,7 +90,8 @@ def main():
         if member is None:
             parser.error('An active administrator is required.')
         items.append((instruction, member))
-    report = {'experiment': 'demonstrations-v1', 'execute': args.execute, 'max_calls': len(items),
+    report = {'experiment': 'demonstration-spans-v2' if args.span_wire else 'demonstrations-v1',
+              'execute': args.execute, 'max_calls': len(items),
               'model': target_model, 'max_reserved_microusd': len(items) * max_cost, 'cases': []}
     if not args.execute:
         print(json.dumps(report));return
