@@ -167,6 +167,9 @@ class VisualProvider:
                 image['detail'] = 'high'
             items.append({'type': 'image_url', 'image_url': image})
         body = {'model': self.model, 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': items}], 'response_format': {'type': 'json_schema', 'json_schema': {'name': 'visual_action_evidence' if self.protocol == '3' else 'visual_step_draft', 'strict': True, 'schema': schema_for_provider(self.provider, self.model, schema)}}, **chat_completion_options(self.provider, self.model)}
+        if self.demonstration_wire and self.provider == 'openrouter' and self.model == 'dots-studio/dots-3-note-preview:free':
+            # Dots supports disabling reasoning. Reserve completion tokens for the JSON answer.
+            body['reasoning'] = {'enabled': False}
         enforce_budget_body(body, frames)
         return system, schema, request, body
 

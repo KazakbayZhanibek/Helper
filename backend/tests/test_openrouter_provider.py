@@ -143,6 +143,28 @@ def test_real_provider_payload_preserves_frames_schema_and_price_cap(team, setti
         assert [base64.b64decode(v['image_url']['url'].split(',', 1)[1]) for v in images] == [f['bytes'] for f in frames]
 
 
+def test_dots_span_request_disables_optional_reasoning_and_keeps_free_route(team, settings):
+    from visual_drafts.demonstrations import SPAN_WIRE_VERSION
+
+    settings.STEP_DRAFT_MODEL = 'dots-studio/dots-3-note-preview:free'
+    buf = io.BytesIO()
+    Image.new('RGB', (100, 80), 'blue').save(buf, format='JPEG')
+    frames = [{'id': str(uuid.uuid4()), 'sequence': i, 'timestamp_ms': i * 1000, 'bytes': buf.getvalue()} for i in (1, 2)]
+    ai = vision.VisualProvider(team.org)
+    ai.protocol = '3'
+    ai.short_action_coverage = 'v1'
+    ai.frame_grounding = 'v3'
+    _, _, _, old_request = ai.prepare_request(language='ru', mode='upload', frames=frames)
+    ai.demonstration_wire = SPAN_WIRE_VERSION
+    _, _, _, request = ai.prepare_request(language='ru', mode='upload', frames=frames)
+    assert 'reasoning' not in old_request
+    assert request['reasoning'] == {'enabled': False}
+    assert request['provider'] == old_request['provider']
+    assert request['provider']['max_price'] == {'prompt': 0, 'completion': 0, 'request': 0, 'image': 0}
+    assert request['provider']['allow_fallbacks'] is False
+    assert request['max_tokens'] == old_request['max_tokens']
+
+
 def test_free_daily_cap_is_global_and_preflight_is_read_only(team, settings):
     settings.OPENROUTER_FREE_DAY_CALLS = 1
     session, job, ai, context = run_fixture(team)
