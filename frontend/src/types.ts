@@ -261,6 +261,7 @@ export type VisualProposalStep = {
   evidence_frame_ids: string[];
   observation_ids?: string[];
   photo_demonstration?: { frame_id: string; caption: string }[];
+  presentation_review?: boolean;
 };
 export type VisualProposal = {
   id: string;

@@ -77,10 +77,11 @@ export function VisualTeachingStep({
   return (
     <div className="teaching-step-content stack">
       <div className="teaching-story" aria-label="Объяснение этапа">
-        {observations.map((observation) => (
-          <p key={observation.id}>{observation.movement}</p>
-        ))}
+        <p>{step.description}</p>
       </div>
+      {step.presentation_review && (
+        <p className="field-hint">Некоторые слова или подпись требуют проверки. Сверьте действие и фотографии с видео.</p>
+      )}
       {reviewIntent && (
         <p className="field-hint">В тексте или подписи указана цель или результат. Сверьте по видео, действительно ли это показано.</p>
       )}

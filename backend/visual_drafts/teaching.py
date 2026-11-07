@@ -51,7 +51,7 @@ def describe_action(observation, *, language, step_format=None):
     return description
 
 
-def present_instruction(content):
+def present_instruction(content, *, presentation_policy=None):
     """Learner-facing text after validation, separate from the archived contract.
 
     The old format remains the exact evidence projection used by all validators.
@@ -80,5 +80,13 @@ def present_instruction(content):
         step['description'] = linked[0]['movement']
         if linked[0]['id'] in demonstrations:
             step['photo_demonstration'] = demonstrations[linked[0]['id']]
+        if presentation_policy == 'cautious_v1' and content.get('frame_grounding', {}).get('version') == 'v3':
+            from .presentation_review import review_step
+            description, photos, review = review_step(step['description'], step.get('photo_demonstration', []), language=content['language'], title=step['title'])
+            step['description'] = description
+            if 'photo_demonstration' in step:
+                step['photo_demonstration'] = photos
+            if review:
+                step['presentation_review'] = True
     result['presentation_format'] = PRESENTATION_FORMAT
     return result

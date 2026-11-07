@@ -33,6 +33,9 @@ export function SavedStepPhotos({
       {editedPhotoWarning(step.origin) && (
         <p className="field-hint">Шаг изменён после создания ИИ. Сверьте текст и фотографии с видео.</p>
       )}
+      {step.warning_codes?.includes('presentation_review') && (
+        <p className="field-hint">Некоторые слова или подпись требуют проверки. Сверьте действие и фотографии с видео.</p>
+      )}
       {reviewIntent && (
         <p className="field-hint">В тексте или подписи указана цель или результат. Сверьте по видео, действительно ли это показано.</p>
       )}

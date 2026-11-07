@@ -189,7 +189,7 @@ def proposal_data(proposal):
         content['analysis'] = {**content['analysis'], 'budget': budget_snapshot(session)}
     if links_valid and not preliminary and proposal.applied_at is None:
         from .teaching import present_instruction
-        content = present_instruction(content)
+        content = present_instruction(content, presentation_policy=session.analysis_budget.get('presentation_policy'))
     return {'id': str(proposal.id), 'instruction_id': str(session.instruction_id), 'session_id': str(session.id), 'base_working_revision': session.base_working_revision, 'provider': proposal.provider, 'model': proposal.model, 'created_at': s.utc(proposal.created_at), 'applied_at': s.utc(proposal.applied_at), 'preliminary': preliminary, 'can_apply': not preliminary and not stale and links_valid and proposal.applied_at is None and working.is_open and working.workflow == 'draft' and 0 < len(content['steps']) <= 30, 'stale': bool(stale), 'window_start_ms': session.window_start_ms, 'window_end_ms': session.window_end_ms, 'frames': [frame_data(f) for f in frames], **content, 'source': s.source_data(session.asset)}
 
 
@@ -382,6 +382,8 @@ def request_uploaded(member, instruction_id, data, supplied):
             if version not in ('v1', 'v2', 'v3'):
                 s.fail('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим проверки кадров. Проверьте настройки сервера.', 422)
             protocol['frame_grounding'] = version
+            if version == 'v3':
+                protocol['presentation_policy'] = 'cautious_v1'
     elif protocol and getattr(settings, 'VISUAL_SEMANTIC_REVIEW', False):
         protocol['semantic_review'] = 'v1'
     session = VisualSession.objects.create(organization=member.organization, instruction=instruction, asset=asset, created_by=member.user, mode='upload', consent_images=True, base_working_revision=working.revision, language=working.language, expires_at=timezone.now() + timedelta(hours=6), window_start_ms=start, window_end_ms=end, analysis_scope=scope, analysis_budget={'max_calls': calls, 'max_cost_microusd': cost, **protocol})
@@ -461,7 +463,7 @@ def apply_proposal(member, instruction_id, proposal_id, data, supplied):
     if not action_links_valid(content, frames):
         s.fail('VISUAL_EVIDENCE_INVALID', 'Не удалось согласовать действие с исходными кадрами.', 422)
     from .teaching import present_instruction
-    steps = present_instruction(content)['steps']
+    steps = present_instruction(content, presentation_policy=session.analysis_budget.get('presentation_policy'))['steps']
     if not steps:
         s.fail('NO_PROPOSED_STEPS', 'В предложении нет шагов для применения.', 422)
     old_count = working.steps.count() if mode == 'append' else 0
@@ -473,7 +475,7 @@ def apply_proposal(member, instruction_id, proposal_id, data, supplied):
         working.steps.update(checked_at=None, checked_by=None)
     warning_codes = sorted({w['code'] for w in content['warnings']})
     fields = ('title', 'description', 'start_ms', 'end_ms', 'evidence_frame_ids')
-    WorkingStep.objects.bulk_create([WorkingStep(organization=member.organization, working_copy=working, ordinal=old_count + index + 1, origin='ai', evidence_visual_session_id=session.id, warning_codes=warning_codes, photo_demonstration=step.get('photo_demonstration', []), **{field: step[field] for field in fields}) for index, step in enumerate(steps)])
+    WorkingStep.objects.bulk_create([WorkingStep(organization=member.organization, working_copy=working, ordinal=old_count + index + 1, origin='ai', evidence_visual_session_id=session.id, warning_codes=sorted(set(warning_codes) | ({'presentation_review'} if step.get('presentation_review') else set())), photo_demonstration=step.get('photo_demonstration', []), **{field: step[field] for field in fields}) for index, step in enumerate(steps)])
     s.bump(working)
     proposal.applied_at, proposal.applied_by = timezone.now(), member.user
     proposal.save(update_fields=['applied_at', 'applied_by', 'updated_at'])
