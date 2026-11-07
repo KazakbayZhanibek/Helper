@@ -39,6 +39,10 @@ def protocol_for_job(job, session):
     if (grounding != job.payload.get('frame_grounding') or grounding not in (None, 'v1', 'v2', 'v3')
             or (grounding and (protocol != '3' or session.mode != 'upload' or coverage != 'v1' or review))):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим проверки фактов кадров не соответствует сеансу анализа.')
+    recovery = session.analysis_budget.get('action_order_recovery')
+    if (recovery != job.payload.get('action_order_recovery') or recovery not in (None, 'drop_invalid_order_v1')
+            or (recovery and grounding != 'v3')):
+        raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим проверки порядка кадров не соответствует сеансу анализа.')
     return protocol
 
 

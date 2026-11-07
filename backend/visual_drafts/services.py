@@ -190,6 +190,12 @@ def proposal_data(proposal):
     if links_valid and not preliminary and proposal.applied_at is None:
         from .teaching import present_instruction
         content = present_instruction(content, presentation_policy=session.analysis_budget.get('presentation_policy'))
+    if session.analysis_budget.get('action_order_recovery') == 'drop_invalid_order_v1':
+        # Raw wire is retained server-side for deterministic reconciliation;
+        # an invalid action must not leak back through a separate API field.
+        grounding = content.get('frame_grounding')
+        if isinstance(grounding, dict):
+            content['frame_grounding'] = {'version': grounding.get('version')}
     return {'id': str(proposal.id), 'instruction_id': str(session.instruction_id), 'session_id': str(session.id), 'base_working_revision': session.base_working_revision, 'provider': proposal.provider, 'model': proposal.model, 'created_at': s.utc(proposal.created_at), 'applied_at': s.utc(proposal.applied_at), 'preliminary': preliminary, 'can_apply': not preliminary and not stale and links_valid and proposal.applied_at is None and working.is_open and working.workflow == 'draft' and 0 < len(content['steps']) <= 30, 'stale': bool(stale), 'window_start_ms': session.window_start_ms, 'window_end_ms': session.window_end_ms, 'frames': [frame_data(f) for f in frames], **content, 'source': s.source_data(session.asset)}
 
 
@@ -384,6 +390,7 @@ def request_uploaded(member, instruction_id, data, supplied):
             protocol['frame_grounding'] = version
             if version == 'v3':
                 protocol['presentation_policy'] = 'cautious_v1'
+                protocol['action_order_recovery'] = 'drop_invalid_order_v1'
     elif protocol and getattr(settings, 'VISUAL_SEMANTIC_REVIEW', False):
         protocol['semantic_review'] = 'v1'
     session = VisualSession.objects.create(organization=member.organization, instruction=instruction, asset=asset, created_by=member.user, mode='upload', consent_images=True, base_working_revision=working.revision, language=working.language, expires_at=timezone.now() + timedelta(hours=6), window_start_ms=start, window_end_ms=end, analysis_scope=scope, analysis_budget={'max_calls': calls, 'max_cost_microusd': cost, **protocol})
@@ -399,6 +406,8 @@ def request_uploaded(member, instruction_id, data, supplied):
         payload['short_action_coverage'] = protocol['short_action_coverage']
     if protocol.get('frame_grounding'):
         payload['frame_grounding'] = protocol['frame_grounding']
+    if protocol.get('action_order_recovery'):
+        payload['action_order_recovery'] = protocol['action_order_recovery']
     job = enqueue_job(member, instruction, 'analyze_video', payload=payload, input_hash=fingerprint({**payload, 'start_ms': start, 'end_ms': end, 'working_revision': working.revision}))
     job.result = {'visual_session_id': str(session.id), 'analysis': analysis_data(session)}
     job.save(update_fields=['result', 'updated_at'])

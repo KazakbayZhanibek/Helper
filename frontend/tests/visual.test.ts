@@ -8,6 +8,10 @@ import {
 } from "../src/visual.ts";
 import type { VisualAnalysisProgress, VisualProposal } from "../src/types.ts";
 
+test("unmatched actions remain clearly marked after applying", () => {
+  assert.match(stepWarningMessages(["action_order_unverified"])[0], /Проверьте весь фрагмент/);
+});
+
 const proposal: VisualProposal = {
   id: "proposal",
   instruction_id: "instruction",
