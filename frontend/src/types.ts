@@ -215,6 +215,7 @@ export type VisualBudgetSnapshot = {
   spent_microusd: number | null;
   reserved_microusd: number | null;
   unknown_calls: number;
+  unexpected_cost_microusd?: number;
 };
 export type VisualFrame = {
   id: string;

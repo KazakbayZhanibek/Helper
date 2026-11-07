@@ -353,10 +353,16 @@ def run_window(job, session, window, context, provider):
             context.commit_guard()
             VisualAnalysisWindow.objects.filter(pk=window.id, state='running').update(state='failed', error_code=error.code[:64])
         raise
-    except (InvalidModelOutput, TypeError, ValueError, RecursionError):
+    except (InvalidModelOutput, TypeError, ValueError, RecursionError) as error:
+        updates = {'state': 'failed', 'error_code': 'VISUAL_OUTPUT_INVALID'}
+        if session.analysis_budget.get('frame_grounding') == 'v3':
+            from .demonstrations import diagnostic_for_error
+            # Failed windows have no accepted content. Retain only finite
+            # diagnostic labels, never raw model text or exception messages.
+            updates['content'] = {'validation_diagnostic': diagnostic_for_error(error)}
         with transaction.atomic():
             context.commit_guard()
-            VisualAnalysisWindow.objects.filter(pk=window.id, state='running').update(state='failed', error_code='VISUAL_OUTPUT_INVALID')
+            VisualAnalysisWindow.objects.filter(pk=window.id, state='running').update(**updates)
         return
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=job.organization_id)

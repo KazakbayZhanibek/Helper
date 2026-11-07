@@ -121,6 +121,19 @@ def analysis_data(session, *, budget=True):
     overview = [window for window in windows if window.parent_id is None]
     refined = [window for window in windows if window.parent_id is not None]
     missing = [{'start_ms': window.start_ms, 'end_ms': window.end_ms} for window in overview if window.state != 'completed']
+
+    def window_data(window):
+        data = {'id': str(window.id), 'start_ms': window.start_ms, 'end_ms': window.end_ms,
+                'kind': 'refinement' if window.parent_id else 'overview', 'state': window.state,
+                'error_code': window.error_code or None}
+        if (window.state == 'failed' and session.analysis_budget.get('frame_grounding') == 'v3'
+                and isinstance(window.content, dict)):
+            from .demonstrations import stored_diagnostic
+            diagnostic = stored_diagnostic(window.content.get('validation_diagnostic'))
+            if diagnostic:
+                data['validation_diagnostic'] = diagnostic
+        return data
+
     result = {
         'scope': session.analysis_scope,
         'windows_total': len(overview),
@@ -130,7 +143,7 @@ def analysis_data(session, *, budget=True):
         'coverage_complete': bool(overview) and not missing,
         'sampling': 'discrete_frames',
         'unprocessed_ranges': missing,
-        'windows': [{'id': str(window.id), 'start_ms': window.start_ms, 'end_ms': window.end_ms, 'kind': 'refinement' if window.parent_id else 'overview', 'state': window.state, 'error_code': window.error_code or None} for window in windows],
+        'windows': [window_data(window) for window in windows],
     }
     if review_enabled(session):
         candidates = [window for window in windows if window.state == 'completed']

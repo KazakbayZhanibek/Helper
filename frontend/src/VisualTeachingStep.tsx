@@ -5,6 +5,7 @@ import {
   teachingObservationsForStep,
 } from "./actionEvidence";
 import { formatMsExact } from "./format";
+import { needsIntentReview } from "./photoPresentation";
 import type { VisualProposal, VisualProposalStep } from "./types";
 
 function StepGaps({
@@ -51,6 +52,11 @@ export function VisualTeachingStep({
   onJump: (ms: number) => void;
 }) {
   const observations = teachingObservationsForStep(proposal, step);
+  const reviewIntent = step.evidence_frame_ids.length > 0 && needsIntentReview(
+    step.title,
+    step.description,
+    ...(step.photo_demonstration ?? []).map((photo) => photo.caption),
+  );
   if (!observations.length)
     return (
       <>
@@ -75,6 +81,9 @@ export function VisualTeachingStep({
           <p key={observation.id}>{observation.movement}</p>
         ))}
       </div>
+      {reviewIntent && (
+        <p className="field-hint">В тексте или подписи указана цель или результат. Сверьте по видео, действительно ли это показано.</p>
+      )}
       <TeachingPhotos
         frames={proposal.frames}
         ids={step.photo_demonstration?.map((photo) => photo.frame_id) ?? step.evidence_frame_ids}

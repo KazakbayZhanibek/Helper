@@ -24,6 +24,9 @@ MAX_TEXT_BYTES = 32768
 PROTOCOL_TOKEN_ALLOWANCE = 2048
 MAX_OUTPUT_TOKENS = 8192
 MAX_IMAGE_TOKENS = 1080  # ceil(960/32)^2 * 1.2, high detail, never upscaled.
+OPENROUTER_SAFETY_ACCOUNT = 'calls:openrouter-safety:v1'
+OPENROUTER_TOTAL_ACCOUNT = 'usd_micros:openrouter-total:v1'
+SAFETY_CALL_CAP = 10**15
 # Official rates checked 2026-11-01. Unknown models/endpoints have no cash estimate.
 # https://developers.openai.com/api/docs/models/gpt-5.4-mini
 # https://developers.openai.com/api/docs/guides/images-vision
@@ -116,10 +119,13 @@ def _blocked():
 def _provider_accounts(provider, model):
     if provider != 'openrouter':
         return []
+    # Stable cross-day, cross-model breaker: a free route that reports a charge
+    # blocks both paid and free OpenRouter dispatch until reconciled.
+    safety = [(OPENROUTER_SAFETY_ACCOUNT, SAFETY_CALL_CAP, 'calls')]
     if model in OPENROUTER_PAID_MODELS:
-        return [('usd_micros:openrouter-total:v1', _setting('OPENROUTER_TOTAL_BUDGET_MICROUSD', 0), 'usd_micros')]
+        return safety + [(OPENROUTER_TOTAL_ACCOUNT, _setting('OPENROUTER_TOTAL_BUDGET_MICROUSD', 0), 'usd_micros')]
     day = timezone.now().astimezone(datetime_timezone.utc).strftime('%Y-%m-%d')
-    return [(f'calls:openrouter-free-day:{day}', min(50, _setting('OPENROUTER_FREE_DAY_CALLS', 50)), 'calls')]
+    return safety + [(f'calls:openrouter-free-day:{day}', min(50, _setting('OPENROUTER_FREE_DAY_CALLS', 50)), 'calls')]
 
 
 def preflight(session, baseline_count, provider=None):
@@ -203,8 +209,13 @@ def reserve(provider, *, job, session, call_key, frames_count=12):
 
 
 def mark_dispatched(reservation):
-    if AIUsageReservation.objects.filter(pk=reservation.pk, state='reserved').update(state='dispatched', dispatched_at=timezone.now()) != 1:
-        raise ProviderFailure('AI_CALL_OUTCOME_UNKNOWN', 'Запрос уже отправлялся; повтор не выполнен.')
+    with transaction.atomic():
+        if reservation.provider == 'openrouter':
+            safety = BudgetAccount.objects.select_for_update().filter(pk=OPENROUTER_SAFETY_ACCOUNT).first()
+            if safety and safety.blocked:
+                raise _blocked()
+        if AIUsageReservation.objects.filter(pk=reservation.pk, state='reserved').update(state='dispatched', dispatched_at=timezone.now()) != 1:
+            raise ProviderFailure('AI_CALL_OUTCOME_UNKNOWN', 'Запрос уже отправлялся; повтор не выполнен.')
 
 
 def mark_unknown(reservation):
@@ -251,12 +262,33 @@ def settle(reservation, usage=None, request_id=''):
         model = usage.get('resolved_model')
         if isinstance(model, str) and 1 <= len(model) <= 200 and all(c.isalnum() or c in '/:._-' for c in model):
             safe = {**(safe or {}), 'resolved_model': model}
+    if reservation.provider == 'openrouter' and reservation.unit == 'calls':
+        if reported_cost is not None and reported_cost > 0:
+            # Preserve an unexpected charge, include it in the shared money
+            # account exactly once, and stop any *new* OpenRouter dispatch.
+            with transaction.atomic():
+                current = AIUsageReservation.objects.select_for_update().get(pk=reservation.pk)
+                if current.state not in {'dispatched', 'unknown', 'settled'} or current.usage.get('free_charge_accounted'):
+                    return
+                safety, _ = BudgetAccount.objects.get_or_create(pk=OPENROUTER_SAFETY_ACCOUNT, defaults={'unit': 'calls'})
+                BudgetAccount.objects.filter(pk=safety.pk).update(blocked=True)
+                total, _ = BudgetAccount.objects.get_or_create(pk=OPENROUTER_TOTAL_ACCOUNT, defaults={'unit': 'usd_micros'})
+                BudgetAccount.objects.filter(pk=total.pk).update(spent=F('spent') + reported_cost)
+                current.state = 'unknown'
+                current.usage = {**(safe or {}), 'free_charge_accounted': True}
+                current.provider_request_id = request_id[:200] if isinstance(request_id, str) else ''
+                current.save(update_fields=['state', 'usage', 'provider_request_id'])
+            return
+        actual_model = (safe or {}).get('resolved_model')
+        if reported_cost != 0 or not isinstance(actual_model, str) or not actual_model.endswith(':free') or not is_free_openrouter_model(actual_model):
+            mark_unknown(reservation)
+            return
     if reservation.unit == 'usd_micros' and (safe is None or (reservation.provider == 'openrouter' and reported_cost is None)):
         mark_unknown(reservation)
         return
     with transaction.atomic():
         current = AIUsageReservation.objects.select_for_update().get(pk=reservation.pk)
-        if current.state not in {'dispatched', 'unknown'}:
+        if current.state not in {'dispatched', 'unknown'} or current.usage.get('free_charge_accounted'):
             return
         actual = 1
         if current.unit == 'usd_micros' and current.provider == 'openrouter':
@@ -290,7 +322,9 @@ def budget_snapshot(session):
     mode = ('usd' if 'usd_micros' in units or (not units and paid_config) else
             'free_calls' if 'openrouter' in active_providers else
             'local_calls' if 'ollama' in active_providers else 'subscription_calls')
-    return {'mode': mode, 'currency': 'USD' if mode == 'usd' else None, 'max_calls': calls, 'calls_used': reservations.count(), 'max_cost_microusd': cash if mode == 'usd' else None, 'reserved_microusd': (values['reserved'] or 0) if mode == 'usd' else None, 'spent_microusd': (values['actual'] or 0) if mode == 'usd' else None, 'unknown_calls': reservations.filter(state__in=['unknown', 'dispatched']).count()}
+    unexpected = sum(item.get('cost_microusd', 0) for item in reservations.filter(unit='calls').values_list('usage', flat=True)
+                     if isinstance(item, dict) and item.get('free_charge_accounted') and type(item.get('cost_microusd')) is int)
+    return {'mode': mode, 'currency': 'USD' if mode == 'usd' else None, 'max_calls': calls, 'calls_used': reservations.count(), 'max_cost_microusd': cash if mode == 'usd' else None, 'reserved_microusd': (values['reserved'] or 0) if mode == 'usd' else None, 'spent_microusd': (values['actual'] or 0) if mode == 'usd' else None, 'unknown_calls': reservations.filter(state__in=['unknown', 'dispatched']).count(), 'unexpected_cost_microusd': unexpected}
 
 
 def execute_budgeted_call(provider, *, job, context, call_key, invoke, session=None, frames_count=0):
@@ -301,7 +335,11 @@ def execute_budgeted_call(provider, *, job, context, call_key, invoke, session=N
     except BaseException:
         release_unstarted(reservation)
         raise
-    mark_dispatched(reservation)
+    try:
+        mark_dispatched(reservation)
+    except BaseException:
+        release_unstarted(reservation)
+        raise
     # The callback runs in the HTTP worker thread. It must not depend on the job
     # lease: a late response is still billable even after authoring cancellation.
     def receipt(usage, request_id=''):

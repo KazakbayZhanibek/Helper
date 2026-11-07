@@ -57,6 +57,12 @@ export function VisualProgress({
               сохраняется.
             </>
           )}
+          {(budget.unexpected_cost_microusd || 0) > 0 && (
+            <>
+              {" "}
+              Провайдер сообщил о неожиданной стоимости бесплатного запроса: ${((budget.unexpected_cost_microusd || 0) / 1_000_000).toFixed(6)}. Новые обращения к OpenRouter остановлены до проверки.
+            </>
+          )}
         </p>
       )}
       {!analysis.coverage_complete &&

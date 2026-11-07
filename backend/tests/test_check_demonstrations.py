@@ -38,7 +38,7 @@ def test_receipts_must_match_selected_model_and_budget():
             'unit': 'usd_micros', 'max_units': 12674, 'usage': {}}
     script.validate_receipts([paid], paid['model'], 13000)
     free = {'provider': 'openrouter', 'model': 'vendor/model:free',
-            'unit': 'calls', 'max_units': 1, 'usage': {'cost_microusd': 0}}
+            'unit': 'calls', 'max_units': 1, 'usage': {'cost_microusd': 0, 'resolved_model': 'vendor/model:free'}}
     script.validate_receipts([free], free['model'], 0)
     with pytest.raises(RuntimeError):
         script.validate_receipts([], free['model'], 0)
@@ -46,5 +46,9 @@ def test_receipts_must_match_selected_model_and_budget():
         script.validate_receipts([free], 'other/model:free', 0)
     with pytest.raises(RuntimeError):
         script.validate_receipts([{**free, 'usage': {'cost_microusd': 1}}], free['model'], 0)
+    with pytest.raises(RuntimeError):
+        script.validate_receipts([{**free, 'usage': {'resolved_model': 'vendor/model:free'}}], free['model'], 0)
+    with pytest.raises(RuntimeError):
+        script.validate_receipts([{**free, 'usage': {'cost_microusd': 0, 'resolved_model': 'other/model:free'}}], free['model'], 0)
     with pytest.raises(RuntimeError):
         script.validate_receipts([{**paid, 'max_units': 13001}], paid['model'], 13000)

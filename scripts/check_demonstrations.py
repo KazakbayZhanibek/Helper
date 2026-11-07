@@ -36,8 +36,9 @@ def validate_receipts(receipts, model, max_cost):
         raise RuntimeError('Receipt did not match the selected OpenRouter model.')
     if max_cost == 0:
         if (receipt['unit'] != 'calls' or receipt['max_units'] != 1
-                or receipt['usage'].get('cost_microusd', 0) != 0):
-            raise RuntimeError('Free-model receipt exceeded its zero-cost route.')
+                or receipt['usage'].get('cost_microusd') != 0
+                or receipt['usage'].get('resolved_model') != model):
+            raise RuntimeError('Free-model receipt does not explicitly confirm this model and zero cost.')
     elif receipt['unit'] != 'usd_micros' or receipt['max_units'] > max_cost:
         raise RuntimeError('Paid-model reservation exceeded the specified cap.')
 

@@ -1,6 +1,6 @@
 import { TeachingPhotos } from "./TeachingPhotos";
 import type { Step } from "./types";
-import { editedPhotoWarning } from "./photoPresentation";
+import { editedPhotoWarning, needsIntentReview } from "./photoPresentation";
 
 /** Published steps preserve action frames, without inferred before/after labels. */
 export function SavedStepPhotos({
@@ -15,6 +15,11 @@ export function SavedStepPhotos({
   const ids = step.evidence_frame_ids || [];
   if (!ids.length) return null;
   const demonstration = step.photo_demonstration?.filter((photo) => ids.includes(photo.frame_id)) ?? [];
+  const reviewIntent = (step.origin === "ai" || step.origin === "ai_edited") && needsIntentReview(
+    step.title,
+    step.description,
+    ...demonstration.map((photo) => photo.caption),
+  );
   // Older immutable publications contain IDs only. Never invent their timestamps.
   const frames =
     step.evidence_frames ??
@@ -27,6 +32,9 @@ export function SavedStepPhotos({
       <p className="eyebrow">Фото к шагу</p>
       {editedPhotoWarning(step.origin) && (
         <p className="field-hint">Шаг изменён после создания ИИ. Сверьте текст и фотографии с видео.</p>
+      )}
+      {reviewIntent && (
+        <p className="field-hint">В тексте или подписи указана цель или результат. Сверьте по видео, действительно ли это показано.</p>
       )}
       <TeachingPhotos
         frames={frames}

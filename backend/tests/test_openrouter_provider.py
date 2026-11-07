@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import threading
 import uuid
 from types import SimpleNamespace
 from urllib.error import HTTPError
@@ -148,7 +149,7 @@ def test_free_daily_cap_is_global_and_preflight_is_read_only(team, settings):
     budget.preflight(session, 1, ai)
     assert not BudgetAccount.objects.exists()
     def invoke():
-        ai._usage_recorder({'resolved_model': 'vendor/vision:free'}, 'one')
+        ai._usage_recorder({'resolved_model': 'vendor/vision:free', 'cost': 0}, 'one')
         return {}
     budget.execute_budgeted_call(ai, session=session, job=job, context=context, call_key='one', invoke=invoke)
     assert AIUsageReservation.objects.get().usage['resolved_model'] == 'vendor/vision:free'
@@ -157,6 +158,96 @@ def test_free_daily_cap_is_global_and_preflight_is_read_only(team, settings):
     with pytest.raises(providers.ProviderFailure, match='AI_BUDGET_EXCEEDED'):
         budget.reserve(ai2, session=other, job=job2, call_key='two')
     assert not BudgetAccount.objects.filter(key=f'calls:session:{other.id}').exists()
+
+
+@pytest.mark.parametrize('usage', [None, {}, {'cost': 0}, {'cost': 'NaN', 'resolved_model': 'vendor/vision:free'},
+                                  {'cost': 0, 'resolved_model': 'vendor/paid'}, {'cost': 0, 'resolved_model': 'openrouter/free'}])
+def test_free_receipt_without_explicit_zero_and_actual_free_model_remains_unknown(team, usage):
+    session, job, ai, _ = run_fixture(team)
+    row = budget.reserve(ai, session=session, job=job, call_key='unconfirmed')
+    budget.mark_dispatched(row)
+    budget.settle(row, usage, 'receipt')
+    row.refresh_from_db()
+    assert row.state == 'unknown' and row.actual_units is None
+    assert BudgetAccount.objects.get(key=f'calls:session:{session.id}').reserved == 1
+
+
+def test_unexpected_free_charge_is_recorded_once_and_blocks_paid_and_free(team):
+    session, job, ai, _ = run_fixture(team)
+    row = budget.reserve(ai, session=session, job=job, call_key='free')
+    budget.mark_dispatched(row)
+    other, paid_job, paid_ai, _ = run_fixture(team, PAID)
+    already_reserved = budget.reserve(paid_ai, session=other, job=paid_job, call_key='paid')
+    bad = {'cost': '0.0000011', 'resolved_model': 'vendor/vision:free'}
+    budget.settle(row, bad, 'unexpected')
+    budget.settle(row, bad, 'duplicate')
+    budget.settle(row, {'cost': 0, 'resolved_model': 'vendor/vision:free'}, 'contradictory')
+    row.refresh_from_db()
+    assert row.state == 'unknown' and row.usage['cost_microusd'] == 2
+    assert budget.budget_snapshot(session)['unexpected_cost_microusd'] == 2
+    assert BudgetAccount.objects.get(pk=budget.OPENROUTER_TOTAL_ACCOUNT).spent == 2
+    assert BudgetAccount.objects.get(pk=budget.OPENROUTER_SAFETY_ACCOUNT).blocked
+    with pytest.raises(providers.ProviderFailure, match='AI_BUDGET_EXCEEDED'):
+        budget.mark_dispatched(already_reserved)
+    already_reserved.refresh_from_db()
+    assert already_reserved.state == 'reserved'
+    for model in (PAID, QWEN, FREE):
+        another, new_job, new_ai, _ = run_fixture(team, model)
+        with pytest.raises(providers.ProviderFailure, match='AI_BUDGET_EXCEEDED'):
+            budget.preflight(another, 1, new_ai)
+        with pytest.raises(providers.ProviderFailure, match='AI_BUDGET_EXCEEDED'):
+            budget.reserve(new_ai, session=another, job=new_job, call_key='blocked')
+
+
+def test_late_unexpected_charge_after_free_settlement_still_blocks(team):
+    session, job, ai, _ = run_fixture(team)
+    row = budget.reserve(ai, session=session, job=job, call_key='free')
+    budget.mark_dispatched(row)
+    budget.settle(row, {'cost': 0, 'resolved_model': 'vendor/vision:free'})
+    row.refresh_from_db()
+    assert row.state == 'settled'
+    budget.settle(row, {'cost': '0.001', 'resolved_model': 'vendor/vision:free'})
+    row.refresh_from_db()
+    assert row.state == 'unknown' and row.usage['cost_microusd'] == 1000
+    assert BudgetAccount.objects.get(pk=budget.OPENROUTER_SAFETY_ACCOUNT).blocked
+
+
+@pytest.mark.django_db(transaction=True)
+def test_parallel_paid_reservation_cannot_dispatch_after_free_charge_breaker(team):
+    from django.db import close_old_connections
+    session, job, ai, _ = run_fixture(team)
+    free_row = budget.reserve(ai, session=session, job=job, call_key='free')
+    budget.mark_dispatched(free_row)
+    paid_session, paid_job, paid_ai, _ = run_fixture(team, PAID)
+    reserved, continue_dispatch = threading.Event(), threading.Event()
+    result = []
+
+    def paid_worker():
+        close_old_connections()
+        try:
+            paid_row = budget.reserve(paid_ai, session=paid_session, job=paid_job, call_key='paid')
+            reserved.set()
+            if not continue_dispatch.wait(timeout=5):
+                result.append('timeout')
+                return
+            try:
+                budget.mark_dispatched(paid_row)
+                result.append('dispatched')
+            except providers.ProviderFailure as error:
+                result.append(error.code)
+        finally:
+            close_old_connections()
+
+    thread = threading.Thread(target=paid_worker)
+    thread.start()
+    assert reserved.wait(timeout=5)
+    try:
+        budget.settle(free_row, {'cost': '0.001', 'resolved_model': 'vendor/vision:free'})
+    finally:
+        continue_dispatch.set()
+        thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert result == ['AI_BUDGET_EXCEEDED']
 
 
 def test_paid_lifetime_cap_survives_sessions_and_counts_unknown_calls(team, settings):
