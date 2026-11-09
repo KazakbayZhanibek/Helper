@@ -391,7 +391,10 @@ def request_uploaded(member, instruction_id, data, supplied):
             if version == 'v3':
                 protocol['presentation_policy'] = 'cautious_v1'
                 protocol['action_order_recovery'] = 'drop_invalid_order_v1'
-                if getattr(settings, 'VISUAL_DEMONSTRATION_SPANS', False):
+                if getattr(settings, 'VISUAL_DEMONSTRATION_SHARED_CAPTIONS', False):
+                    from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION
+                    protocol['demonstration_wire'] = SHARED_CAPTIONS_WIRE_VERSION
+                elif getattr(settings, 'VISUAL_DEMONSTRATION_SPANS', False):
                     from .demonstrations import SPAN_WIRE_VERSION
                     protocol['demonstration_wire'] = SPAN_WIRE_VERSION
     elif protocol and getattr(settings, 'VISUAL_SEMANTIC_REVIEW', False):

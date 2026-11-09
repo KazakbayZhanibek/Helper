@@ -48,7 +48,9 @@ def main():
     parser.add_argument('--instruction', action='append', required=True)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--model', help='Explicit OpenRouter :free model or approved Qwen model for this process only.')
-    parser.add_argument('--span-wire', action='store_true', help='Test the distinct frame-pair contract.')
+    wire = parser.add_mutually_exclusive_group()
+    wire.add_argument('--span-wire', action='store_true', help='Test the distinct frame-pair contract.')
+    wire.add_argument('--shared-captions', action='store_true', help='Test frame pairs with a shared caption per frame.')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args()
     if not 1 <= len(set(args.instruction)) == len(args.instruction) <= 2:
@@ -78,6 +80,7 @@ def main():
     settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
     settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
     settings.VISUAL_DEMONSTRATION_SPANS = args.span_wire
+    settings.VISUAL_DEMONSTRATION_SHARED_CAPTIONS = args.shared_captions
     items = []
     for identity in args.instruction:
         instruction = Instruction.objects.select_related('source_asset', 'working_copy', 'organization').get(pk=identity, lifecycle='active')
@@ -90,7 +93,12 @@ def main():
         if member is None:
             parser.error('An active administrator is required.')
         items.append((instruction, member))
-    report = {'experiment': 'demonstration-spans-v2' if args.span_wire else 'demonstrations-v1',
+    experiment = 'demonstrations-v1'
+    if args.shared_captions:
+        experiment = 'demonstration-shared-captions-v3'
+    elif args.span_wire:
+        experiment = 'demonstration-spans-v2'
+    report = {'experiment': experiment,
               'execute': args.execute, 'max_calls': len(items),
               'model': target_model, 'max_reserved_microusd': len(items) * max_cost, 'cases': []}
     if not args.execute:

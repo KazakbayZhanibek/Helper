@@ -62,6 +62,7 @@ VISUAL_FRAME_GROUNDING = os.getenv('VISUAL_FRAME_GROUNDING', '0') == '1'
 # Existing sessions keep their immutable version; opt into inline evidence for new ones.
 VISUAL_FRAME_GROUNDING_VERSION = os.getenv('VISUAL_FRAME_GROUNDING_VERSION', 'v1')
 VISUAL_DEMONSTRATION_SPANS = os.getenv('VISUAL_DEMONSTRATION_SPANS', '0') == '1'
+VISUAL_DEMONSTRATION_SHARED_CAPTIONS = os.getenv('VISUAL_DEMONSTRATION_SHARED_CAPTIONS', '0') == '1'
 ASR_BACKEND = os.getenv('ASR_BACKEND', '')
 WHISPER_CPP_BINARY = os.getenv('WHISPER_CPP_BINARY', '')
 ASR_MODEL_PATH = os.getenv('ASR_MODEL_PATH', '')

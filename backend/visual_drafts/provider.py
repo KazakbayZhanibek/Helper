@@ -44,8 +44,8 @@ def request_contract(protocol, language, mode, frames, *, short_action_coverage=
     if demonstration_wire is not None and frame_grounding != 'v3':
         raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
     if frame_grounding == 'v3':
-        from .demonstrations import SPAN_WIRE_VERSION, WIRE_VERSION, bind_schema, system_for_wire
-        if demonstration_wire not in (None, SPAN_WIRE_VERSION):
+        from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION, SPAN_WIRE_VERSION, WIRE_VERSION, bind_schema, system_for_wire
+        if demonstration_wire not in (None, SPAN_WIRE_VERSION, SHARED_CAPTIONS_WIRE_VERSION):
             raise ProviderFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
         wire_version = demonstration_wire or WIRE_VERSION
         system, schema = system_for_wire(wire_version), bind_schema(frames, wire_version=wire_version)

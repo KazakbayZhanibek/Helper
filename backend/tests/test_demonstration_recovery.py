@@ -133,10 +133,13 @@ def test_worker_stores_wire_but_api_and_apply_exclude_invalid_action(team, full_
 
 
 @pytest.mark.django_db
-def test_span_wire_is_pinned_and_worker_applies_the_same_two_photos(team, full_video, settings, monkeypatch):
+@pytest.mark.parametrize('shared_captions', [False, True])
+def test_span_wire_is_pinned_and_worker_applies_the_same_two_photos(team, full_video, settings, monkeypatch, shared_captions):
     settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
     settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
     settings.VISUAL_DEMONSTRATION_SPANS = True
+    settings.VISUAL_DEMONSTRATION_SHARED_CAPTIONS = shared_captions
+    wire_version = demo.SHARED_CAPTIONS_WIRE_VERSION if shared_captions else demo.SPAN_WIRE_VERSION
 
     class Fake(provider.VisualProvider):
         provider, model = 'openai', 'gpt-5.4-mini'
@@ -146,19 +149,26 @@ def test_span_wire_is_pinned_and_worker_applies_the_same_two_photos(team, full_v
             pass
 
         def generate(self, *, frames, **kwargs):
-            assert self.demonstration_wire == demo.SPAN_WIRE_VERSION
-            return {'schema_version': demo.SPAN_WIRE_VERSION, 'language': 'ru', 'gaps': [], 'actions': [{
+            assert self.demonstration_wire == wire_version
+            action = {
                 'subject': 'Крышка', 'title': 'Поднимаем крышку', 'frame_pair': '1-2', 'kind': 'action',
-                'before': 'Крышка лежит на коробке.', 'after': 'Крышка в руке над коробкой.',
-                'change': 'Крышка над коробкой.', 'instruction': 'Берём крышку за край и поднимаем её.',
-            }]}
+                'instruction': 'Берём крышку за край и поднимаем её.',
+            }
+            before, after = 'Крышка лежит на коробке.', 'Крышка в руке над коробкой.'
+            response = {'schema_version': wire_version, 'language': 'ru', 'gaps': [], 'actions': [action]}
+            if shared_captions:
+                response['frame_captions'] = {'1': before, '2': after}
+            else:
+                action.update(before=before, after=after, change='Крышка над коробкой.')
+            return response
 
     monkeypatch.setattr(worker, 'VisualProvider', Fake)
     monkeypatch.setattr(worker, 'uploaded_frames', fake_extraction)
     job, session = queue(team, full_video, max_ai_calls=3)
-    assert session.analysis_budget['demonstration_wire'] == job.payload['demonstration_wire'] == demo.SPAN_WIRE_VERSION
+    assert session.analysis_budget['demonstration_wire'] == job.payload['demonstration_wire'] == wire_version
     # Workers must use the queued policy even if the setting changes before execution.
     settings.VISUAL_DEMONSTRATION_SPANS = False
+    settings.VISUAL_DEMONSTRATION_SHARED_CAPTIONS = False
     assert process_one()
     job.refresh_from_db()
     assert job.state == 'done'

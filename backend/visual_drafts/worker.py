@@ -47,8 +47,8 @@ def protocol_for_job(job, session):
     if wire != job.payload.get('demonstration_wire'):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Формат привязки к кадрам не соответствует сеансу анализа.')
     if wire is not None:
-        from .demonstrations import SPAN_WIRE_VERSION
-        if grounding != 'v3' or wire != SPAN_WIRE_VERSION:
+        from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION, SPAN_WIRE_VERSION
+        if grounding != 'v3' or wire not in (SPAN_WIRE_VERSION, SHARED_CAPTIONS_WIRE_VERSION):
             raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
     return protocol
 
