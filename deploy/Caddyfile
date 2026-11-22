@@ -17,7 +17,7 @@ https://{$RECIPE_HOST} {
 		reverse_proxy api:8000
 	}
 
-	@spa path / /login /example /o/*
+	@spa path / /login /login/ /example /example/ /o/*
 	handle @spa {
 		rewrite * /index.html
 		header Cache-Control "no-cache"

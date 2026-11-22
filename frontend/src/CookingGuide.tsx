@@ -18,6 +18,10 @@ export function CookingGuide({
   const [finished, setFinished] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const stepHeading = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const player = video.current;
+    return () => player?.pause();
+  }, []);
   const current = snapshot.steps[active];
   useEffect(() => {
     const player = video.current;

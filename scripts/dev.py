@@ -37,6 +37,12 @@ def check_port(port):
             raise SystemExit(f'Port {port} is already in use. Stop that local service before starting this launcher.')
 
 
+def listening(port):
+    with socket.socket() as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(('127.0.0.1', port)) == 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--prepare-only', action='store_true')
@@ -46,7 +52,7 @@ def main():
     if not PYTHON.exists():
         raise SystemExit('Create .venv with Python 3.12+ and install requirements.lock first. See README.md.')
     env = load_environment()
-    port = args.port or (4173 if args.preview else 5173)
+    port = args.port if args.port is not None else (4173 if args.preview else 5173)
     if not 1 <= port <= 65535 or port == 8000:
         parser.error('Choose a web port in 1..65535 other than the API port 8000.')
     local_origins = [f'http://{host}:{port}' for host in ('localhost', '127.0.0.1')]
@@ -71,8 +77,14 @@ def main():
         processes.append(subprocess.Popen([str(PYTHON), 'manage.py', 'processing_worker'], cwd=ROOT / 'backend', env=env))
         web_args = [npm, 'run', 'preview' if args.preview else 'dev', '--', '--port', str(port), '--strictPort']
         processes.append(subprocess.Popen(web_args, cwd=ROOT / 'frontend', env=env))
-        print(f'\nРецепты мастера · http://127.0.0.1:{port}\n', flush=True)
-        while all(process.poll() is None for process in processes):
+        announced = False
+        while True:
+            for process in processes:
+                if process.poll() is not None:
+                    raise SystemExit(f'Local service exited (code {process.returncode}): {process.args[0]}')
+            if not announced and listening(port) and listening(8000):
+                print(f'\nРецепты мастера · http://127.0.0.1:{port}\n', flush=True)
+                announced = True
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
