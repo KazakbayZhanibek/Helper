@@ -378,6 +378,14 @@
   }
 }
 @media (max-width: 375px) {
+  .reader-step-nav {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+  .reader-step-nav > button {
+    min-height: 44px;
+    max-width: 100%;
+  }
   .kitchen-tabs {
     gap: 2px;
   }
