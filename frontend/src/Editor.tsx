@@ -1,6 +1,6 @@
 import { CameraCapture } from "./CameraCapture";
 import { VisualAnalysis } from "./VisualAnalysis";
-import { SavedStepPhotos } from "./SavedStepPhotos";
+import { RecipeStepPhotos } from "./RecipeStepPhotos";
 import { TeachingClip } from "./TeachingClip";
 import { ProcessingPanel } from "./Processing";
 import { RecipeEditor, RecipeIngredients } from "./RecipeDetails";
@@ -44,7 +44,7 @@ function validation(form: Draft): string[] {
   if (form.title.trim().length < 3)
     errors.push("Название должно содержать не менее 3 символов.");
   if (form.purpose.trim().length < 10)
-    errors.push("Опишите цель: не менее 10 символов.");
+    errors.push("Опишите результат хотя бы в 10 символах.");
   const recipe = recipeFromInputs(form);
   if (recipe) {
     if (recipe.ingredients.length > 30)
@@ -91,6 +91,13 @@ const confirmationLabels = {
   completeness: "Пояснений достаточно для выполнения",
   relevance: "Инструкция актуальна",
   privacy: "В записи нет лишних чувствительных данных",
+};
+const recipeConfirmationLabels: typeof confirmationLabels = {
+  order: "Этапы приготовления идут по порядку",
+  terminology: "По описанию понятно, что и как делать",
+  completeness: "Ингредиенты и указанные количества проверены",
+  relevance: "Каждое действие сверено с записью или подтверждено автором",
+  privacy: "Запись можно показывать участникам кухни",
 };
 export function Editor({
   org,
@@ -248,9 +255,9 @@ export function Editor({
       setReturnOpen(false);
       setSavedNotice(
         name === "submit-review"
-          ? "Инструкция передана на проверку"
+          ? "Передано на проверку"
           : name === "return-to-draft"
-            ? "Инструкция возвращена автору"
+            ? "Возвращено автору"
             : "Изменения сохранены",
       );
     } catch (e) {
@@ -267,7 +274,7 @@ export function Editor({
     if (!form.steps.length) errors.push("Добавьте хотя бы один шаг.");
     const recipe = recipeFromInputs(form);
     if (recipe && !recipe.ingredients.length)
-      errors.push("Добавьте ингредиенты рецепта или очистите поле порций.");
+      errors.push("Перед проверкой добавьте хотя бы один ингредиент.");
     if (errors.length) {
       setValidationErrors(errors);
       return;
@@ -353,6 +360,7 @@ export function Editor({
   }
   function jump(ms: number) {
     if (video.current) {
+      video.current.pause();
       video.current.currentTime = ms / 1000;
       video.current.focus();
     }
@@ -368,7 +376,7 @@ export function Editor({
           <Icon name="back" />
           Библиотека
         </button>
-        <ErrorBanner error={error || "Инструкция недоступна."}>
+        <ErrorBanner error={error || "Черновик недоступен."}>
           <button className="text-button" onClick={() => void load()}>
             Повторить
           </button>
@@ -380,6 +388,7 @@ export function Editor({
   const inReview = form.workflow === "in_review" && form.is_open;
   const checked = form.steps.filter((s) => s.checked).length;
   const recipe = recipeFromInputs(form);
+  const reviewLabels = recipe ? recipeConfirmationLabels : confirmationLabels;
   return (
     <>
       <button
@@ -387,17 +396,21 @@ export function Editor({
         onClick={() => navigate(libraryPath(org.id))}
       >
         <Icon name="back" size={17} />
-        Все инструкции
+        Книга рецептов
       </button>
       <div className="editor-header">
         <div>
           <div className="editor-kicker">
             <span className="eyebrow">
-              {inReview ? "Проверка мастером" : "Редактор инструкции"}
+              {inReview
+                ? "Проверка перед публикацией"
+                : recipe
+                  ? "Редактор рецепта"
+                  : "Архивный материал"}
             </span>
             <Status status={!form.is_open ? "published" : form.workflow} />
           </div>
-          <h1>{form.title || "Новая инструкция"}</h1>
+          <h1>{form.title || (recipe ? "Новый рецепт" : "Черновик")}</h1>
           <span className="save-state" role="status">
             {saving
               ? "Сохраняем…"
@@ -494,12 +507,12 @@ export function Editor({
             <strong>
               {reviewer
                 ? "Сверьте каждый шаг с видео"
-                : "Инструкция ожидает проверки мастером"}
+                : "Черновик ожидает проверки"}
             </strong>
             <p>
               На время проверки содержание заблокировано.
               {reviewer
-                ? " Отметьте шаги, затем подтвердите инструкцию целиком."
+                ? " Просмотрите фотографии и фрагменты видео, затем отметьте проверенные шаги."
                 : " Чтобы внести изменения, отзовите запрос."}
             </p>
           </div>
@@ -521,7 +534,7 @@ export function Editor({
           </div>
           <p className="source-caption">
             {form.source?.is_demo
-              ? "Учебная запись · синтетическая анимация без речи"
+              ? "Учебная видеозапись"
               : form.source
                 ? "Ваша исходная запись · доступна участникам пространства"
                 : "Видео пока не добавлено"}
@@ -530,14 +543,14 @@ export function Editor({
             <div className="notice warning">
               <div>
                 <p>
-                  Эта запись не подготовлена. Если файл не подходит, создайте
-                  инструкцию с другим видео.
+                  Не удалось подготовить запись. Можно создать рецепт с другим
+                  видео.
                 </p>
                 <button
                   className="text-button"
                   onClick={() => navigate(libraryPath(org.id) + "/new")}
                 >
-                  Создать инструкцию с другим видео
+                  Создать рецепт с другим видео
                 </button>
               </div>
             </div>
@@ -583,8 +596,9 @@ export function Editor({
           <div className="editor-tip">
             <Icon name="info" />
             <p>
-              Выбирайте короткие фрагменты: один шаг — одно действие. Время
-              можно взять из проигрывателя.
+              {recipe
+                ? "Привяжите каждый этап приготовления к моменту на видео. Укажите, как повторить движение и по чему понять, что пора переходить дальше."
+                : "Привяжите каждое действие к фрагменту видео. Время можно взять из проигрывателя."}
             </p>
           </div>
           {form.source?.status === "ready" && (
@@ -622,10 +636,13 @@ export function Editor({
             onJump={jump}
           />
         </aside>
-        <section className="editor-content" aria-label="Содержание инструкции">
+        <section
+          className="editor-content"
+          aria-label={recipe ? "Содержание рецепта" : "Содержание материала"}
+        >
           <fieldset className="metadata-fields" disabled={!editable || locked}>
             <label>
-              Название
+              {recipe ? "Название блюда" : "Название"}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -634,7 +651,7 @@ export function Editor({
               />
             </label>
             <label>
-              Результат работы
+              {recipe ? "Что получится" : "Результат работы"}
               <textarea
                 rows={2}
                 value={form.purpose}
@@ -660,7 +677,7 @@ export function Editor({
               </select>
             </label>
           </fieldset>
-          {form.editable ? (
+          {form.editable && recipe ? (
             <RecipeEditor
               key={form.instruction_id}
               ingredientsInput={form.ingredientsInput}
@@ -674,12 +691,28 @@ export function Editor({
                 setValidationErrors([]);
               }}
             />
+          ) : recipe ? (
+            <RecipeIngredients recipe={recipe} />
           ) : (
-            recipe && <RecipeIngredients recipe={recipe} />
+            editable && (
+              <button
+                className="button secondary legacy-to-recipe"
+                disabled={locked}
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    recipe: { ingredients: [], servings: null },
+                  })
+                }
+              >
+                Сделать из материала рецепт
+              </button>
+            )
           )}
           <div className="section-heading">
             <h2>
-              Шаги инструкции <span>{form.steps.length}</span>
+              {recipe ? "Приготовление" : "Шаги"}{" "}
+              <span>{form.steps.length}</span>
             </h2>
             {inReview && (
               <span className="small muted">
@@ -690,9 +723,13 @@ export function Editor({
           {form.steps.length === 0 && (
             <div className="empty-steps">
               <Icon name="book" size={28} />
-              <p>Разделите процесс на простые действия.</p>
+              <p>
+                {recipe
+                  ? "Добавьте первый этап приготовления."
+                  : "Разделите процесс на простые действия."}
+              </p>
               <span>
-                Начните с первого шага и укажите его фрагмент в видео.
+                Можно описать шаг вручную или взять его из разбора видео.
               </span>
             </div>
           )}
@@ -776,7 +813,11 @@ export function Editor({
                       <input
                         id={`step-title-${index}`}
                         className="step-title-input"
-                        placeholder="Что нужно сделать?"
+                        placeholder={
+                          recipe
+                            ? "Например, замесите тесто"
+                            : "Что нужно сделать?"
+                        }
                         value={step.title}
                         onChange={(e) =>
                           updateStep(index, { title: e.target.value })
@@ -788,7 +829,11 @@ export function Editor({
                       <span className="sr-only">Описание шага {index + 1}</span>
                       <textarea
                         rows={3}
-                        placeholder="Опишите действие, детали и важные условия"
+                        placeholder={
+                          recipe
+                            ? "Что сделать с ингредиентами и как понять, что шаг завершён?"
+                            : "Опишите действие и важные условия"
+                        }
                         value={step.description}
                         onChange={(e) =>
                           updateStep(index, { description: e.target.value })
@@ -872,7 +917,15 @@ export function Editor({
                     )}
                   </div>
                 )}
-                <SavedStepPhotos step={step} orgId={org.id} onJump={jump} />
+                <RecipeStepPhotos
+                  step={step}
+                  recipe={!!recipe}
+                  orgId={org.id}
+                  source={form.source}
+                  start={parseMs(step.startInput)}
+                  end={parseMs(step.endInput)}
+                  onJump={jump}
+                />
                 <TeachingClip
                   source={form.source}
                   startMs={parseMs(step.startInput)}
@@ -898,11 +951,12 @@ export function Editor({
               {reviewer ? (
                 <>
                   <p>
-                    Подтвердите инструкцию целиком. После публикации её смогут
-                    открыть коллеги.
+                    {recipe
+                      ? "Сверьте список продуктов, количества и порядок приготовления. После публикации участники кухни смогут открыть рецепт и готовить по нему."
+                      : "Проверьте материал целиком. После публикации его смогут открыть участники."}
                   </p>
                   <div className="review-checklist">
-                    {Object.entries(confirmationLabels).map(([key, label]) => (
+                    {Object.entries(reviewLabels).map(([key, label]) => (
                       <label className="checkbox-label" key={key}>
                         <input
                           type="checkbox"
@@ -915,11 +969,7 @@ export function Editor({
                           }
                           disabled={locked || conflict}
                         />
-                        <span>
-                          {recipe && key === "completeness"
-                            ? "Ингредиенты, количества и пояснения проверены"
-                            : label}
-                        </span>
+                        <span>{label}</span>
                       </label>
                     ))}
                   </div>
@@ -931,9 +981,7 @@ export function Editor({
                         locked ||
                         conflict ||
                         checked !== form.steps.length ||
-                        Object.keys(confirmationLabels).some(
-                          (k) => !confirmations[k],
-                        )
+                        Object.keys(reviewLabels).some((k) => !confirmations[k])
                       }
                     >
                       {busy ? "Публикуем…" : "Опубликовать"}
@@ -1002,7 +1050,7 @@ export function Editor({
           <p>Скопируйте текст перед загрузкой актуальной версии.</p>
           <textarea
             className="local-copy"
-            aria-label="Локальная копия инструкции"
+            aria-label="Локальная копия черновика"
             readOnly
             rows={14}
             value={JSON.stringify(payload(form), null, 2)}

@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
 import pytest
-from core.models import WorkingCopy
+from core.models import Instruction, WorkingCopy
 
-from .conftest import CONFIRMATIONS, checked_review, document, post, save
+from .conftest import CONFIRMATIONS, base, checked_review, document, post, save
 
 
 pytestmark = pytest.mark.django_db
@@ -91,3 +91,88 @@ def test_reopening_legacy_version_clears_recipe_from_newer_working_copy(team, pu
     })
     assert restored.status_code == 201, restored.data
     assert restored.json()['recipe'] is None
+
+
+EMPTY_RECIPE = {'ingredients': [], 'servings': None}
+
+
+def new_recipe(team, recipe):
+    return post(team.clients['author'], base(team), {
+        'title': 'Тёплый салат', 'purpose': 'Салат для семейного обеда.', 'language': 'ru',
+        'recipe': recipe, 'demo_source': True,
+    }, key='create-salad')
+
+
+def test_new_recipe_requires_ingredients_even_after_clear_by_old_editor(team):
+    author = team.clients['author']
+    created = new_recipe(team, EMPTY_RECIPE)
+    assert created.status_code == 201, created.data
+    working = created.json()
+    url = base(team) + '/' + working['instruction_id']
+    assert working['recipe'] == EMPTY_RECIPE
+    step = {'title': 'Нарежьте овощи', 'description': 'Нарежьте огурец ломтиками.',
+            'start_ms': 0, 'end_ms': 1000}
+    saved = save(author, url, working, document(working, recipe=None, steps=[step]))
+    assert saved.status_code == 200, saved.data
+    assert saved.json()['recipe'] == EMPTY_RECIPE
+    reviewed = post(author, url + '/submit-review', etag=saved.json()['etag'])
+    assert reviewed.status_code == 400
+    assert 'recipe.ingredients' in reviewed.json()['error']['field_errors']
+    assert author.get(url).json()['kind'] == 'recipe'
+
+
+def test_invalid_recipe_create_is_atomic(team):
+    response = new_recipe(team, {'ingredients': ['Лук'], 'servings': 0})
+    assert response.status_code == 400
+    assert 'recipe.servings' in response.json()['error']['field_errors']
+    assert not Instruction.objects.exists()
+    assert new_recipe(team, EMPTY_RECIPE).status_code == 201
+
+
+def test_library_uses_visible_version_for_recipe_kind_counts_and_ingredient_search(team, publication):
+    author, reader = (team.clients[role] for role in ('author', 'reader'))
+    listing = base(team)
+    legacy_version = publication.version
+    working = post(author, publication.url + '/create-draft', {'source_version_id': legacy_version['id']}).json()
+    recipe = {'ingredients': ['Йогурт', 'Тёртая корица — щепотка'], 'servings': 3}
+    edited = save(author, publication.url, working, document(working, recipe=recipe)).json()
+
+    def items(client, **query):
+        response = client.get(listing, query)
+        assert response.status_code == 200, response.data
+        return response.json()['items']
+
+    assert items(reader, kind='recipe') == []
+    assert items(reader, kind='legacy')[0]['kind'] == 'legacy'
+    assert items(author, kind='legacy') == []
+    found = items(author, kind='recipe', q='КОРИЦА')
+    assert len(found) == 1 and found[0]['ingredient_count'] == 2 and found[0]['servings'] == 3
+    assert items(reader, q='корица') == []
+    reviewed = checked_review(team, SimpleNamespace(url=publication.url, working=edited))
+    published = post(team.clients['reviewer'], publication.url + '/publish',
+                     {'confirmations': CONFIRMATIONS}, etag=reviewed['etag'], key='publish-ingredients')
+    assert published.status_code == 201, published.data
+    now_visible = items(reader, kind='recipe', q='И\u0306огурт')
+    assert len(now_visible) == 1 and now_visible[0]['ingredient_count'] == 2
+    assert items(reader, q='тертая')[0]['id'] == edited['instruction_id']
+    assert items(reader, kind='legacy') == []
+    assert items(reader, kind='recipe', status='draft') == []
+
+    # Returning to an older draft affects the author but leaves the published recipe visible.
+    reopened = post(author, publication.url + '/create-draft', {'source_version_id': legacy_version['id']})
+    assert reopened.status_code == 201
+    assert items(author, kind='legacy')[0]['ingredient_count'] == 0
+    assert items(reader, kind='recipe')[0]['servings'] == 3
+
+
+def test_kind_filter_applies_before_pagination(team, draft):
+    assert new_recipe(team, EMPTY_RECIPE).status_code == 201
+    author = team.clients['author']
+    for kind, wanted_id in [('recipe', None), ('legacy', draft.working['instruction_id'])]:
+        first = author.get(base(team), {'kind': kind, 'page_size': 1}).json()
+        assert first['total'] == 1 and first['next_cursor'] is None
+        assert first['items'][0]['kind'] == kind
+        if wanted_id:
+            assert first['items'][0]['id'] == wanted_id
+        assert author.get(base(team), {'kind': kind, 'page_size': 1, 'cursor': 1}).json()['items'] == []
+    assert author.get(base(team), {'kind': 'typo'}).status_code == 400

@@ -274,14 +274,14 @@ export function VisualAnalysis({
   return (
     <section
       className="pipeline-panel visual-analysis stack"
-      aria-label="Создание инструкции по видео"
+      aria-label="Создание рецепта по видео"
     >
       <div>
-        <span className="eyebrow">Видео → инструкция</span>
-        <h3>Создать инструкцию по видео</h3>
+        <span className="eyebrow">Рецепт по видео</span>
+        <h3>Составить рецепт по видео</h3>
       </div>
       <p>
-        Получите черновик для повторения работы: что сделать, как выполнить
+        Получите черновик приготовления блюда: что сделать, как выполнить
         движение и что проверить по записи. {planCopy.description}
       </p>
       <p className="field-hint">
@@ -453,7 +453,7 @@ export function VisualAnalysis({
                   : capabilities?.provider === "codex"
                     ? "в OpenAI через подписку ChatGPT"
                     : "настроенному облачному ИИ"}{" "}
-              для составления черновика инструкции.
+              для составления черновика рецепта.
             </span>
           </label>
           {capabilities && !capabilities.available && (
@@ -475,7 +475,7 @@ export function VisualAnalysis({
             onClick={() => void generate()}
           >
             {scope === "full"
-              ? "Создать инструкцию по всей записи"
+              ? "Составить рецепт по всей записи"
               : "Создать шаги по фрагменту"}
           </button>
           {!capabilities?.available && (
@@ -575,7 +575,7 @@ export function VisualAnalysis({
             onClick={() => openProposal(latest)}
           >
             {isTeachingProposal(latest) && latest.steps.length > 0
-              ? "Проверить шаги инструкции"
+              ? "Проверить шаги рецепта"
               : "Посмотреть действия и кадры"}
           </button>
         </div>
@@ -611,7 +611,7 @@ export function VisualAnalysis({
             !preview.steps.length
               ? previewSummary?.title || "Результат анализа видео"
               : isTeachingProposal(preview)
-                ? "Черновик инструкции по видео"
+                ? "Черновик рецепта по видео"
                 : "Действия, замеченные на видео"
           }
           onClose={() => {
@@ -639,7 +639,7 @@ export function VisualAnalysis({
                         ? "Предложение составлено по последовательному просмотру записи."
                         : "Предложение относится к выбранному фрагменту."}{" "}
                       Сверьте каждое действие с записью и уточните время.
-                      Недостающие сведения уточните у мастера.
+                      Недостающие сведения уточните у автора рецепта.
                     </p>
                     {preview.analysis && (
                       <VisualProgress

@@ -82,6 +82,8 @@ class MediaAsset(TenantEntity):
 
 class Instruction(TenantEntity):
     owner = models.ForeignKey(User, on_delete=models.PROTECT)
+    # NULL identifies documents from the original general-purpose editor.
+    content_kind = models.CharField(max_length=12, choices=[('recipe', 'Рецепт')], null=True, editable=False)
     source_asset = models.OneToOneField(MediaAsset, null=True, blank=True, on_delete=models.PROTECT)
     lifecycle = models.CharField(max_length=12, default='active')
     current_version = models.ForeignKey('PublishedVersion', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
@@ -97,6 +99,7 @@ class WorkingCopy(TenantEntity):
     purpose = models.CharField(max_length=600)
     language = models.CharField(max_length=5, default='ru', choices=[('ru', 'ru'), ('kk', 'kk'), ('mixed', 'mixed')])
     recipe = models.JSONField(null=True, blank=True)
+    library_search_text = models.TextField(null=True, editable=False)
     review_requested_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name='+')
     review_requested_at = models.DateTimeField(null=True)
     based_on_version = models.ForeignKey('PublishedVersion', null=True, on_delete=models.PROTECT, related_name='+')

@@ -234,6 +234,8 @@ def start_live(member, instruction_id, data, supplied):
     if VisualSession.objects.filter(organization=member.organization, mode='live', state='active').count() >= 3:
         s.fail('VISUAL_SESSION_LIMIT', 'В организации уже работают три камеры.', 429)
     protocol = {'visual_protocol': '3'} if getattr(settings, 'VISUAL_ACTION_EVIDENCE', False) else {}
+    if working.recipe is not None:
+        protocol['culinary_guidance'] = 'v1'
     session = VisualSession.objects.create(organization=member.organization, instruction=instruction, asset=None, created_by=member.user, mode='live', consent_images=True, base_working_revision=working.revision, language=working.language, expires_at=timezone.now() + timedelta(minutes=10), analysis_budget=protocol)
     s.audit(member, 'visual_session.started', session)
     return session_data(session), 201
@@ -431,6 +433,8 @@ def request_uploaded(member, instruction_id, data, supplied):
         required_calls *= 2
         if calls < required_calls:
             s.fail('AI_BUDGET_TOO_SMALL', f'Для разбора и проверки каждого фрагмента нужно до {required_calls} бесплатных обращений.', 422)
+    if working.recipe is not None:
+        protocol['culinary_guidance'] = 'v1'
     session = VisualSession.objects.create(organization=member.organization, instruction=instruction, asset=asset, created_by=member.user, mode='upload', consent_images=True, base_working_revision=working.revision, language=working.language, expires_at=timezone.now() + timedelta(hours=6), window_start_ms=start, window_end_ms=end, analysis_scope=scope, analysis_budget={'max_calls': calls, 'max_cost_microusd': cost, **protocol})
     try:
         preflight(session, required_calls)

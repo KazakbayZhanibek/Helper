@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { countNoun } from "./format";
-import { RecipeIngredients } from "./RecipeDetails";
-import { SavedStepPhotos } from "./SavedStepPhotos";
+import { CookingGuide } from "./CookingGuide";
 import {
   api,
   ApiError,
@@ -15,7 +14,6 @@ import {
   Icon,
   Loading,
   Status,
-  Video,
   date,
   languageName,
   time,
@@ -39,15 +37,12 @@ export function Reader({
   const [item, setItem] = useState<Instruction | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [active, setActive] = useState(0);
-  const [segment, setSegment] = useState(true);
   const [busy, setBusy] = useState(false);
   const [newVersion, setNewVersion] = useState(false);
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [copied, setCopied] = useState(false);
-  const video = useRef<HTMLVideoElement>(null);
   const base = instructionApi(org.id, id);
   const isWriter = org.role !== "reader";
   const isReviewer = org.role === "admin" || org.role === "reviewer";
@@ -58,7 +53,6 @@ export function Reader({
       const r = await api<Instruction>(base);
       setItem(r);
       setNewVersion(false);
-      setActive(0);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -74,17 +68,13 @@ export function Reader({
       try {
         const next = await api<Instruction>(base);
         if (!next.publication) {
-          video.current?.pause();
           setItem(next);
         } else if (next.publication.id !== item.publication?.id)
           setNewVersion(true);
       } catch (e) {
         if (e instanceof ApiError && [401, 403, 404].includes(e.status)) {
-          video.current?.pause();
           setItem(null);
-          setError(
-            "Инструкция больше недоступна. Обратитесь к ответственному.",
-          );
+          setError("Публикация больше недоступна. Обратитесь к автору.");
         }
       }
     }, 30000);
@@ -142,32 +132,7 @@ export function Reader({
       setBusy(false);
     }
   }
-  function select(index: number) {
-    setActive(index);
-    if (video.current && item?.publication) {
-      video.current.pause();
-      video.current.currentTime =
-        item.publication.snapshot.steps[index].start_ms / 1000;
-    }
-  }
-  async function play() {
-    if (!video.current || !item?.publication) return;
-    const step = item.publication.snapshot.steps[active];
-    if (
-      segment &&
-      (video.current.currentTime < step.start_ms / 1000 ||
-        video.current.currentTime >= step.end_ms / 1000)
-    )
-      video.current.currentTime = step.start_ms / 1000;
-    try {
-      await video.current.play();
-    } catch {
-      setError(
-        "Не удалось запустить видео. Попробуйте кнопку воспроизведения в проигрывателе.",
-      );
-    }
-  }
-  if (loading) return <Loading label="Открываем инструкцию…" />;
+  if (loading) return <Loading label="Открываем публикацию…" />;
   if (!item?.publication)
     return (
       <>
@@ -181,7 +146,7 @@ export function Reader({
         {error && <ErrorBanner error={error} />}
         <div className="empty-state">
           <Icon name="book" size={32} />
-          <h1>Инструкция пока недоступна</h1>
+          <h1>Публикация пока недоступна</h1>
           <p>
             Публикация ещё не готова или была отозвана. Обратитесь к
             ответственному.
@@ -199,7 +164,6 @@ export function Reader({
     );
   const version = item.publication;
   const { snapshot } = version;
-  const current = snapshot.steps[active];
   return (
     <>
       <button
@@ -207,7 +171,7 @@ export function Reader({
         onClick={() => navigate(libraryPath(org.id))}
       >
         <Icon name="back" size={17} />
-        Все инструкции
+        Книга рецептов
       </button>
       <div className="reader-heading">
         <div className="editor-kicker">
@@ -226,7 +190,7 @@ export function Reader({
           </span>
           <span>
             <Icon name="clock" size={16} />
-            {time(snapshot.source.duration_ms)}
+            Видео {time(snapshot.source.duration_ms)}
           </span>
           <span>{languageName(snapshot.language)}</span>
           <span>
@@ -242,8 +206,8 @@ export function Reader({
           <div>
             <strong>Доступна новая версия</strong>
             <p>
-              Текущий просмотр сохранён. Обновите инструкцию, когда будете
-              готовы.
+              Вы просматриваете прежнюю версию. Новую можно открыть, когда
+              будете готовы.
             </p>
             <button className="text-button" onClick={() => void load()}>
               Открыть новую версию
@@ -251,127 +215,7 @@ export function Reader({
           </div>
         </div>
       )}
-      {snapshot.recipe && <RecipeIngredients recipe={snapshot.recipe} />}
-      <div className="reader-grid">
-        <section className="reader-video">
-          <Video
-            source={snapshot.source}
-            videoRef={video}
-            onTimeUpdate={() => {
-              if (
-                segment &&
-                current &&
-                video.current &&
-                video.current.currentTime >= current.end_ms / 1000
-              )
-                video.current.pause();
-            }}
-          />
-          <div className="playback-options">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={segment}
-                onChange={(e) => setSegment(e.target.checked)}
-              />
-              <span>Воспроизводить только этот шаг</span>
-            </label>
-            <span>{time(snapshot.source.duration_ms)}</span>
-          </div>
-          {current && (
-            <div className="current-step">
-              <span className="eyebrow">
-                Шаг {String(active + 1).padStart(2, "0")} из{" "}
-                {snapshot.steps.length}
-              </span>
-              <h2>{current.title}</h2>
-              <p>{current.description}</p>
-              <SavedStepPhotos
-                step={current}
-                orgId={org.id}
-                onJump={(ms) => {
-                  if (video.current) {
-                    video.current.pause();
-                    video.current.currentTime = ms / 1000;
-                    video.current.scrollIntoView({ block: "nearest" });
-                  }
-                }}
-              />
-              <button className="button primary" onClick={() => void play()}>
-                <Icon name="play" size={17} />
-                Посмотреть этот шаг
-                <span className="button-time">
-                  {time(current.end_ms - current.start_ms)}
-                </span>
-              </button>
-              <div className="reader-step-nav">
-                <button
-                  className="text-button"
-                  disabled={active === 0}
-                  onClick={() => select(active - 1)}
-                >
-                  <Icon name="back" size={16} />
-                  Предыдущий
-                </button>
-                <button
-                  className="text-button"
-                  disabled={active === snapshot.steps.length - 1}
-                  onClick={() => select(active + 1)}
-                >
-                  Следующий
-                  <Icon name="arrow" size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-        <aside className="reader-outline">
-          <div className="section-heading">
-            <h2>По шагам</h2>
-            <span className="small muted">
-              {snapshot.steps.length}{" "}
-              {countNoun(snapshot.steps.length, [
-                "действие",
-                "действия",
-                "действий",
-              ])}
-            </span>
-          </div>
-          <ol>
-            {snapshot.steps.map((step, index) => (
-              <li key={step.id}>
-                <button
-                  className={active === index ? "active" : ""}
-                  aria-current={active === index ? "step" : undefined}
-                  onClick={() => select(index)}
-                >
-                  <span className="outline-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span>
-                    <strong>{step.title}</strong>
-                    <small>
-                      {time(step.start_ms)}–{time(step.end_ms)}
-                    </small>
-                  </span>
-                  {active === index ? (
-                    <Icon name="play" size={16} />
-                  ) : (
-                    <Icon name="check" size={15} />
-                  )}
-                </button>
-              </li>
-            ))}
-          </ol>
-          <div className="reader-proof">
-            <Icon name="shield" />
-            <p>
-              Опубликованную версию проверил человек. Изменения проходят новую
-              проверку.
-            </p>
-          </div>
-        </aside>
-      </div>
+      <CookingGuide key={version.id} snapshot={snapshot} orgId={org.id} />
       <div className="reader-actions">
         <button
           className="button secondary"

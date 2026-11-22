@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, libraryPath } from "./api";
 import { Auth, RenewSession } from "./Auth";
-import { Library, NewInstruction } from "./Library";
+import { Library, NewRecipe } from "./Library";
 import { Editor } from "./Editor";
 import { Reader } from "./Reader";
 import { Home } from "./Home";
+import { ExampleRecipe } from "./ExampleRecipe";
 import { Brand, ErrorBanner, Icon, Loading } from "./components";
 import type { Session } from "./types";
+import "./recipe-shell.css";
 const roleName = {
   admin: "Администратор",
-  author: "Автор",
+  author: "Автор рецептов",
   reviewer: "Проверяющий",
-  reader: "Читатель",
+  reader: "Читатель рецептов",
 };
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [path, setPath] = useState(location.pathname);
+  const example = path === "/example" || path === "/example/";
   const dirty = useRef(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [expired, setExpired] = useState(false);
@@ -67,8 +70,8 @@ export default function App() {
     }
   }, []);
   useEffect(() => {
-    void check();
-  }, [check]);
+    if (!example) void check();
+  }, [check, example]);
   useEffect(() => {
     const expire = () => setExpired(true);
     window.addEventListener("session-expired", expire);
@@ -107,11 +110,12 @@ export default function App() {
       setLogoutBusy(false);
     }
   }
+  if (example) return <ExampleRecipe />;
   if (loading)
     return (
       <div className="app-loading">
         <Brand />
-        <Loading label="Открываем пространство…" />
+        <Loading label="Открываем книгу рецептов…" />
       </div>
     );
   if (path === "/") return <Home session={session} navigate={navigate} />;
@@ -139,7 +143,7 @@ export default function App() {
     return (
       <main className="empty-state">
         <Brand />
-        <h1>Нет доступа к пространству</h1>
+        <h1>Нет доступа к этой кухне</h1>
         <p>
           Обратитесь к администратору или войдите под другой учётной записью.
         </p>
@@ -151,10 +155,13 @@ export default function App() {
   const id = parts[3];
   const isNew = id === "new";
   const isEditor = !!id && !isNew && ["edit", "review"].includes(parts[4]);
-  const invalidRoute =
-    parts.length > 0 &&
-    !(parts[0] === "o" && parts[2] === "instructions" && parts.length <= 5) &&
-    path !== "/login";
+  const collectionRoute =
+    parts[0] === "o" && ["recipes", "instructions"].includes(parts[2]);
+  const validDetail =
+    parts.length === 3 ||
+    parts.length === 4 ||
+    (parts.length === 5 && !isNew && isEditor);
+  const invalidRoute = path !== "/login" && (!collectionRoute || !validDetail);
   return (
     <>
       <div className="app-shell">
@@ -165,29 +172,43 @@ export default function App() {
           <button
             className="brand-button"
             onClick={() => navigate(libraryPath(org.id))}
-            aria-label="Опыт мастера — библиотека"
+            aria-label="Рецепты мастера — книга рецептов"
           >
             <Brand />
           </button>
-          <div className="organization-card">
-            <span className="org-symbol">{org.name[0]}</span>
-            <div>
-              <strong>{org.name}</strong>
-              <small>
-                {session.demo_mode
-                  ? "Локальное пространство"
-                  : "Рабочее пространство"}
-              </small>
+          {session.organizations.length > 1 ? (
+            <label className="recipe-kitchen-selector">
+              <span>Кухня</span>
+              <select
+                value={org.id}
+                onChange={(event) => navigate(libraryPath(event.target.value))}
+              >
+                {session.organizations.map((kitchen) => (
+                  <option key={kitchen.id} value={kitchen.id}>
+                    {kitchen.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="organization-card">
+              <span className="org-symbol">{org.name[0]}</span>
+              <div>
+                <strong>{org.name}</strong>
+                <small>
+                  {session.demo_mode ? "Локальная кухня" : "Кухня команды"}
+                </small>
+              </div>
             </div>
-          </div>
-          <div className="nav-label">Рабочее пространство</div>
+          )}
+          <div className="nav-label">Моя кухня</div>
           <nav aria-label="Главное меню">
             <button
               className={!id ? "active" : ""}
               onClick={() => navigate(libraryPath(org.id))}
             >
-              <Icon name="grid" />
-              Инструкции
+              <Icon name="book" />
+              Книга рецептов
               <Icon name="chevron" size={14} />
             </button>
             {org.role !== "reader" && (
@@ -196,18 +217,13 @@ export default function App() {
                 onClick={() => navigate(libraryPath(org.id) + "/new")}
               >
                 <Icon name="plus" />
-                Создать инструкцию
+                Создать рецепт
               </button>
             )}
           </nav>
-          <div className="sidebar-note">
-            <span className="tiny-check">
-              <Icon name="check" size={13} />
-            </span>
-            <h3>Знания остаются.</h3>
-            <p>Помогайте коллегам делать работу уверенно — шаг за шагом.</p>
+          <div className="sidebar-note recipe-sidebar-help">
             <button className="text-button" onClick={() => navigate("/")}>
-              О продукте <Icon name="arrow" size={14} />
+              О сервисе <Icon name="arrow" size={14} />
             </button>
           </div>
           <div className="profile">
@@ -232,13 +248,21 @@ export default function App() {
           <header className="topbar">
             <div>
               <Icon name="grid" size={16} />
-              <span>Пространство команды</span>
+              <span>Моя кухня</span>
               <span className="topbar-divider">/</span>
-              <strong>Инструкции</strong>
+              <strong>
+                {isNew
+                  ? "Новый рецепт"
+                  : isEditor
+                    ? "Редактор"
+                    : id
+                      ? "Просмотр"
+                      : "Книга рецептов"}
+              </strong>
             </div>
             <span className="pilot-badge">
               <span />
-              {session.demo_mode ? "Локальный пилот" : "Командный доступ"}
+              {session.demo_mode ? "Локальная кухня" : "Командный доступ"}
             </span>
           </header>
           <main
@@ -254,16 +278,15 @@ export default function App() {
                   className="button primary"
                   onClick={() => navigate(libraryPath(org.id))}
                 >
-                  Открыть библиотеку
+                  Открыть книгу рецептов
                 </button>
               </div>
             ) : isNew ? (
               org.role === "reader" ? (
-                <ErrorBanner error="Создание инструкций доступно автору и проверяющему." />
+                <ErrorBanner error="Для создания рецептов нужны права автора, проверяющего или администратора." />
               ) : (
-                <NewInstruction
+                <NewRecipe
                   org={org}
-                  session={session}
                   navigate={navigate}
                   setDirtyGuard={setDirtyGuard}
                 />
@@ -284,7 +307,7 @@ export default function App() {
             ) : id ? (
               <Reader org={org} id={id} navigate={navigate} />
             ) : (
-              <Library org={org} session={session} navigate={navigate} />
+              <Library org={org} navigate={navigate} />
             )}
           </main>
         </div>

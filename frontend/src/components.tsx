@@ -2,6 +2,11 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import type { Source } from "./types";
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
+    bowl: (
+      <>
+        <path d="M3 12h18a9.4 9.4 0 0 1-18 0ZM9 21h6M9 9c-1.5-2.6 2.6-3.3 1.2-6M14 9c-1.5-2.6 2.6-3.3 1.2-6" />
+      </>
+    ),
     grid: (
       <>
         <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -93,14 +98,20 @@ export function Brand() {
     <span className="brand">
       <span className="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 40 40">
-          <path
-            d="M9 28V12h5l6 9 6-9h5v16h-5v-8l-6 9-6-9v8"
-            fill="currentColor"
-          />
+          <g
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M7 20h26c-1.6 6.4-6.3 10.5-13 10.5S8.6 26.4 7 20Z" />
+            <path d="M15 32h10M16 16c-2-3.5 3.5-4.5 1.5-8M22 16c-2-3.5 3.5-4.5 1.5-8" />
+          </g>
         </svg>
       </span>
       <span>
-        Опыт
+        Рецепты
         <br />
         мастера<span className="brand-dot">.</span>
       </span>
@@ -181,7 +192,7 @@ export function Video({
           src={source.playback_url || undefined}
           poster={source.thumbnail_url || undefined}
           onTimeUpdate={onTimeUpdate}
-          aria-label="Исходное видео инструкции"
+          aria-label="Исходная видеозапись"
         />
       ) : (
         <div className="video-empty">
@@ -231,55 +242,10 @@ export function Dialog({
     </dialog>
   );
 }
-export function PackageArt({ variant = 0 }: { variant?: number }) {
+export function RecipeCover({ legacy = false }: { legacy?: boolean }) {
   return (
-    <div className={`package-art art-${variant % 3}`} aria-hidden="true">
-      <svg viewBox="0 0 420 240" fill="none">
-        <ellipse
-          cx="216"
-          cy="195"
-          rx="107"
-          ry="15"
-          fill="currentColor"
-          opacity=".08"
-        />
-        <path d="m134 94 79-40 85 41-80 43Z" fill="var(--box-top)" />
-        <path d="m134 94 84 44v68l-84-43Z" fill="var(--box-left)" />
-        <path d="m218 138 80-43v69l-80 42Z" fill="var(--box-right)" />
-        <path
-          d="m164 79 84 44v68l19-11v-68l-84-43Z"
-          fill="var(--box-tape)"
-          opacity=".7"
-        />
-        <rect
-          x="150"
-          y="127"
-          width="43"
-          height="29"
-          rx="2"
-          transform="skewY(27) translate(0 -75)"
-          fill="#fff"
-          opacity=".8"
-        />
-        <path
-          d="m163 152 19 10m-19-5 12 7"
-          stroke="var(--box-right)"
-          strokeWidth="3"
-        />
-        <circle cx="320" cy="61" r="23" fill="var(--badge)" />
-        <path
-          d="m310 61 7 7 13-14"
-          stroke="var(--box-right)"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M98 115h-21m28 28H67m36-7H88"
-          stroke="currentColor"
-          strokeWidth="2"
-          opacity=".2"
-        />
-      </svg>
+    <div className="recipe-cover-fallback" aria-hidden="true">
+      <Icon name={legacy ? "book" : "bowl"} size={44} />
     </div>
   );
 }

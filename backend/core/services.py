@@ -39,7 +39,7 @@ def instruction_for(member, instruction_id, lock=False):
         query = query.select_for_update(of=('self',))
     instruction = query.filter(id=instruction_id).first()
     if not instruction or (member.role == 'reader' and not instruction.current_version_id):
-        fail('NOT_FOUND', 'Инструкция не найдена.', 404)
+        fail('NOT_FOUND', 'Карточка не найдена.', 404)
     return instruction
 
 
@@ -112,17 +112,26 @@ def summary(instruction, reader=False):
     working = instruction.working_copy
     version = instruction.current_version
     use_publication = reader or not working.is_open
-    content = version.snapshot if use_publication and version else {'title': working.title, 'purpose': working.purpose, 'language': working.language}
+    content = version.snapshot if use_publication and version else {
+        'title': working.title, 'purpose': working.purpose, 'language': working.language, 'recipe': working.recipe,
+    }
+    recipe = content.get('recipe')
     status = working.workflow if working.is_open else ('published' if version else 'draft')
     source = source_data(instruction.source_asset)
-    return {'id': str(instruction.id), 'title': content['title'], 'purpose': content['purpose'], 'language': content['language'], 'status': 'published' if reader else status, 'step_count': len(version.snapshot['steps']) if use_publication and version else working.steps.count(), 'duration_ms': instruction.source_asset.duration_ms if instruction.source_asset else None, 'source_is_demo': source['is_demo'] if source else False, 'thumbnail_url': source['thumbnail_url'] if source else None, 'current_version_id': str(version.id) if version else None, 'version_number': version.version_number if version else None, 'updated_at': utc(instruction.updated_at), 'owner_name': instruction.owner.display_name}
+    if use_publication and version:
+        step_count = len(version.snapshot['steps'])
+    elif hasattr(instruction, 'working_step_count'):
+        step_count = instruction.working_step_count
+    else:
+        step_count = working.steps.count()
+    return {'id': str(instruction.id), 'title': content['title'], 'purpose': content['purpose'], 'language': content['language'], 'status': 'published' if reader else status, 'step_count': step_count, 'duration_ms': instruction.source_asset.duration_ms if instruction.source_asset else None, 'source_is_demo': source['is_demo'] if source else False, 'thumbnail_url': source['thumbnail_url'] if source else None, 'current_version_id': str(version.id) if version else None, 'version_number': version.version_number if version else None, 'updated_at': utc(instruction.updated_at), 'owner_name': instruction.owner.display_name, 'kind': 'recipe' if recipe is not None else 'legacy', 'ingredient_count': len(recipe['ingredients']) if recipe else 0, 'servings': recipe['servings'] if recipe else None}
 
 
 def require_match(working, supplied):
     if not supplied:
-        fail('PRECONDITION_REQUIRED', 'Для изменения нужна текущая версия инструкции.', 428)
+        fail('PRECONDITION_REQUIRED', 'Для изменения нужна текущая версия карточки.', 428)
     if supplied != etag(working):
-        fail('REVISION_CONFLICT', 'Инструкцию изменили в другом окне. Загрузите актуальную версию.', 412, details={'actual_revision': working.revision})
+        fail('REVISION_CONFLICT', 'Карточку изменили в другом окне. Загрузите актуальную версию.', 412, details={'actual_revision': working.revision})
 
 
 def ensure_dict(data):
@@ -142,6 +151,8 @@ def text_field(data, name, minimum, maximum):
     if not isinstance(raw, str):
         fail('VALIDATION_ERROR', 'Проверьте обязательные поля.', fields={name: ['Введите текст.']})
     value = unicodedata.normalize('NFC', raw).strip()
+    if '\x00' in value or any('\ud800' <= char <= '\udfff' for char in value):
+        fail('VALIDATION_ERROR', 'В тексте есть недопустимый символ.', fields={name: ['Проверьте текст.']})
     if not minimum <= len(value) <= maximum:
         fail('VALIDATION_ERROR', 'Проверьте длину текста.', fields={name: [f'От {minimum} до {maximum} символов.']})
     return value
@@ -152,13 +163,15 @@ def content_fields(data):
     purpose = text_field(data, 'purpose', 10, 600)
     language = data.get('language')
     if not isinstance(language, str) or language not in {'ru', 'kk', 'mixed'}:
-        fail('VALIDATION_ERROR', 'Выберите язык инструкции.', fields={'language': ['Выберите русский, казахский или смешанный.']})
+        fail('VALIDATION_ERROR', 'Выберите язык описания.', fields={'language': ['Выберите русский, казахский или смешанный.']})
     return title, purpose, language
 
 
-def validate_recipe(recipe, *, for_review=False):
+def validate_recipe(recipe, *, dedicated=False, for_review=False):
     if recipe is None:
-        return None
+        if not dedicated:
+            return None
+        recipe = {'ingredients': [], 'servings': None}
     if not isinstance(recipe, dict) or set(recipe) != {'ingredients', 'servings'}:
         fail('VALIDATION_ERROR', 'Укажите ингредиенты и число порций в карточке рецепта.', fields={'recipe': ['Проверьте карточку рецепта.']})
     ingredients = recipe['ingredients']
@@ -169,17 +182,26 @@ def validate_recipe(recipe, *, for_review=False):
         line = text_field({'recipe.ingredients': ingredient}, 'recipe.ingredients', 1, 160)
         if len(line.splitlines()) != 1:
             fail('VALIDATION_ERROR', 'Укажите каждый ингредиент отдельной строкой.', fields={'recipe.ingredients': ['Используйте одну строку на ингредиент.']})
-        if '\x00' in line or any('\ud800' <= character <= '\udfff' for character in line):
-            fail('VALIDATION_ERROR', 'В ингредиенте есть недопустимый символ.', fields={'recipe.ingredients': ['Проверьте текст ингредиента.']})
         lines.append(line)
     servings = recipe['servings']
     if servings is not None and (type(servings) is not int or not 1 <= servings <= 1000):
         fail('VALIDATION_ERROR', 'Введите целое число порций от 1 до 1000.', fields={'recipe.servings': ['Допустимо от 1 до 1000 порций.']})
-    if not lines and servings is None:
+    if not lines and servings is None and not dedicated:
         return None
     if for_review and not lines:
         fail('VALIDATION_ERROR', 'Добавьте хотя бы один ингредиент перед отправкой рецепта на проверку.', fields={'recipe.ingredients': ['Добавьте ингредиент.']})
     return {'ingredients': lines, 'servings': servings}
+
+
+def normalize_library_search(value):
+    return unicodedata.normalize('NFC', value).casefold().replace('ё', 'е')
+
+
+def library_search_text(title, purpose, recipe, steps=()):
+    parts = [title, purpose, *(recipe or {}).get('ingredients', [])]
+    for step in steps:
+        parts.extend((step['title'], step['description']))
+    return normalize_library_search(' '.join(parts))
 
 
 def audit(member, action, obj):
@@ -197,7 +219,11 @@ def idempotent(request, member, operation):
     if not key or len(key) > 128:
         fail('VALIDATION_ERROR', 'Нужен Idempotency-Key длиной до 128 символов.')
     ensure_dict(request.data)
-    digest = hashlib.sha256(json.dumps(request.data, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    serialized = json.dumps(request.data, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    try:
+        digest = hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+    except UnicodeEncodeError:
+        fail('VALIDATION_ERROR', 'В тексте есть недопустимый символ.')
     # Serialize changes to this org. This also protects creation of idempotency records.
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=member.organization_id)
@@ -216,8 +242,10 @@ def idempotent(request, member, operation):
 
 
 def create_instruction(member, data):
-    allowed_fields(data, {'title', 'purpose', 'language', 'demo_source'})
+    allowed_fields(data, {'title', 'purpose', 'language', 'demo_source', 'recipe'})
     title, purpose, language = content_fields(data)
+    dedicated = data.get('recipe') is not None
+    recipe = validate_recipe(data.get('recipe'), dedicated=dedicated)
     if 'demo_source' in data and type(data['demo_source']) is not bool:
         fail('VALIDATION_ERROR', 'demo_source должен быть логическим значением.')
     source = None
@@ -228,8 +256,8 @@ def create_instruction(member, data):
         if not demo_path.is_file():
             fail('DEPENDENCY_UNAVAILABLE', 'Демонстрационное видео ещё не подготовлено.', 503)
         source = MediaAsset.objects.create(organization=member.organization, storage_key='demo-process.mp4', duration_ms=settings.DEMO_DURATION_MS)
-    instruction = Instruction.objects.create(organization=member.organization, owner=member.user, source_asset=source)
-    working = WorkingCopy.objects.create(organization=member.organization, instruction=instruction, title=title, purpose=purpose, language=language)
+    instruction = Instruction.objects.create(organization=member.organization, owner=member.user, source_asset=source, content_kind='recipe' if dedicated else None)
+    working = WorkingCopy.objects.create(organization=member.organization, instruction=instruction, title=title, purpose=purpose, language=language, recipe=recipe, library_search_text=library_search_text(title, purpose, recipe))
     audit(member, 'instruction.created', instruction)
     return working_data(working), 201
 
@@ -277,12 +305,13 @@ def save_working(member, instruction_id, data, supplied):
         working = WorkingCopy.objects.select_for_update().get(instruction=instruction)
         require_match(working, supplied)
         if not working.is_open or working.workflow != 'draft':
-            fail('INVALID_STATE', 'Верните инструкцию в черновик перед редактированием.')
+            fail('INVALID_STATE', 'Верните карточку в черновик перед редактированием.')
         title, purpose, language = content_fields(data)
         steps = validate_steps(data, working)
         if 'recipe' in data:
-            working.recipe = validate_recipe(data['recipe'])
+            working.recipe = validate_recipe(data['recipe'], dedicated=instruction.content_kind == 'recipe')
         working.title, working.purpose, working.language = title, purpose, language
+        working.library_search_text = library_search_text(title, purpose, working.recipe)
         # Rebuild order atomically. IDs stay stable; all review marks reset on editing.
         working.steps.all().delete()
         WorkingStep.objects.bulk_create([WorkingStep(organization=member.organization, working_copy=working, ordinal=i + 1, **step) for i, step in enumerate(steps)])
@@ -299,7 +328,7 @@ def validate_ready(working):
     if not 1 <= count <= 30:
         fail('VALIDATION_ERROR', 'Добавьте от 1 до 30 шагов.')
     content_fields({'title': working.title, 'purpose': working.purpose, 'language': working.language})
-    validate_recipe(working.recipe, for_review=True)
+    validate_recipe(working.recipe, dedicated=working.instruction.content_kind == 'recipe', for_review=True)
     for step in working.steps.all():
         if step.end_ms > asset.duration_ms or step.end_ms <= step.start_ms:
             fail('INVALID_TIME_RANGE', 'Проверьте границы времени каждого шага.')
@@ -318,7 +347,7 @@ def workflow_action(member, instruction_id, action, data, supplied):
         if action == 'submit-review':
             allowed_fields(data, set())
             if working.workflow != 'draft':
-                fail('INVALID_STATE', 'Инструкция уже на проверке.')
+                fail('INVALID_STATE', 'Карточка уже на проверке.')
             validate_ready(working)
             working.workflow = 'in_review'
             working.return_reason = ''
@@ -328,7 +357,7 @@ def workflow_action(member, instruction_id, action, data, supplied):
         elif action in {'withdraw-review', 'return-to-draft'}:
             allowed_fields(data, {'reason'} if action == 'return-to-draft' else set())
             if working.workflow != 'in_review':
-                fail('INVALID_STATE', 'Инструкция сейчас не находится на проверке.')
+                fail('INVALID_STATE', 'Карточка сейчас не находится на проверке.')
             if action == 'return-to-draft':
                 working.return_reason = text_field(data, 'reason', 10, 2000)
             working.workflow = 'draft'
@@ -338,7 +367,7 @@ def workflow_action(member, instruction_id, action, data, supplied):
         elif action == 'review/check-step':
             allowed_fields(data, {'step_id', 'checked'})
             if working.workflow != 'in_review':
-                fail('INVALID_STATE', 'Сначала отправьте инструкцию на проверку.')
+                fail('INVALID_STATE', 'Сначала отправьте карточку на проверку.')
             if type(data.get('checked')) is not bool:
                 fail('VALIDATION_ERROR', 'checked должен быть логическим значением.')
             try:
@@ -378,7 +407,7 @@ def publish(member, instruction_id, data, supplied):
     digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
     version = PublishedVersion.objects.create(organization=member.organization, instruction=instruction, source_asset=instruction.source_asset, version_number=number, snapshot=snapshot, content_sha256=digest, source_working_revision=working.revision, published_by=member.user)
     instruction.current_version = version
-    instruction.published_search_text = ' '.join([working.title, working.purpose, *[s.title + ' ' + s.description for s in working.steps.all()]])
+    instruction.published_search_text = library_search_text(working.title, working.purpose, working.recipe, snapshot['steps'])
     instruction.save()
     working.is_open = False
     bump(working)
@@ -392,7 +421,7 @@ def create_draft(member, instruction_id, data):
         instruction = instruction_for(member, instruction_id, lock=True)
         working = WorkingCopy.objects.select_for_update().get(instruction=instruction)
         if working.is_open:
-            fail('INVALID_STATE', 'Для инструкции уже есть открытый черновик.', 409)
+            fail('INVALID_STATE', 'Для этой карточки уже есть открытый черновик.', 409)
         try:
             version_id = uuid.UUID(str(data.get('source_version_id')))
         except (ValueError, TypeError):
@@ -402,7 +431,8 @@ def create_draft(member, instruction_id, data):
             fail('NOT_FOUND', 'Версия не найдена.', 404)
         snapshot = version.snapshot
         working.title, working.purpose, working.language = snapshot['title'], snapshot['purpose'], snapshot['language']
-        working.recipe = snapshot.get('recipe')
+        working.recipe = validate_recipe(snapshot.get('recipe'), dedicated=instruction.content_kind == 'recipe')
+        working.library_search_text = library_search_text(working.title, working.purpose, working.recipe)
         working.workflow, working.is_open = 'draft', True
         working.based_on_version = version
         working.return_reason = ''

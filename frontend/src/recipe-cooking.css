@@ -1,0 +1,90 @@
+.recipe-editor h2 {
+  margin: 0;
+  padding: 16px;
+  font-size: 17px;
+}
+
+.recipe-ingredients .ingredient-count {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.recipe-ingredients .ingredient-checklist {
+  padding: 0;
+  list-style: none;
+}
+
+.ingredient-checklist .checkbox-label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 40px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ingredient-checklist input:checked + span {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.cook-step-heading {
+  margin: 0 0 16px;
+  scroll-margin-top: 20px;
+}
+
+.cook-step-heading h2 {
+  margin: 4px 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.cook-step-heading p {
+  margin: 0;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cook-step-heading:focus-visible {
+  outline: 2px solid var(--pine);
+  outline-offset: 5px;
+}
+
+.cook-complete {
+  padding: 20px;
+  margin: 16px 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.cook-complete h2 {
+  margin: 0 0 12px;
+}
+
+.legacy-to-recipe {
+  margin: 0 0 20px;
+}
+
+.recipe-sample-page main {
+  padding-top: clamp(20px, 4vw, 48px);
+}
+
+.recipe-sample-page .reader-heading h1 {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: clamp(2.1rem, 4.6vw, 3.8rem);
+  font-weight: 500;
+  line-height: 1.08;
+}
+
+.recipe-sample-page .public-footer {
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 40px;
+}
+
+.recipe-sample-page .public-footer a {
+  color: var(--muted);
+  text-underline-offset: 3px;
+}

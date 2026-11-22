@@ -1,0 +1,17 @@
+FROM python:3.12-slim-bookworm
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 kitchen \
+    && useradd --uid 10001 --gid kitchen --no-create-home kitchen \
+    && install -d -o kitchen -g kitchen -m 750 /var/lib/kitchen/media
+WORKDIR /app
+COPY requirements.lock ./requirements.lock
+COPY backend/requirements.txt ./backend/requirements.txt
+COPY deploy/requirements.txt ./deploy/requirements.txt
+RUN python -m pip install --no-cache-dir -c requirements.lock -r deploy/requirements.txt
+COPY backend/ ./backend/
+COPY contracts/ ./contracts/
+WORKDIR /app/backend
+USER kitchen
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "120", "config.wsgi:application"]

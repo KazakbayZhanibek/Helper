@@ -4,7 +4,7 @@ NPM ?= npm
 .PHONY: help prepare dev check check-plan check-backend check-frontend build
 
 help:
-	@echo 'prepare       Apply local migrations and seed the synthetic demo (.env required)'
+	@echo 'prepare       Apply local migrations and install the cooking demo (.env required)'
 	@echo 'dev           Prepare and run Django + Vite + processing worker; Ctrl+C stops all'
 	@echo 'check         Run plan checks, backend tests and frontend production build'
 	@echo 'check-plan    Validate the original planning artifacts'

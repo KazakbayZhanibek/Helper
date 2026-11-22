@@ -1,0 +1,67 @@
+name: Recipe deployment smoke
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RECIPE_HOST: localhost
+      RECIPE_DB_PASSWORD: ci-disposable-recipes
+      RECIPE_EXTERNAL_AI: "0"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare ephemeral application secret
+        run: echo "RECIPE_SECRET_KEY=$(openssl rand -hex 48)" >> "$GITHUB_ENV"
+      - name: Build and start production services
+        run: |
+          docker compose config --quiet
+          docker compose build
+          docker compose up -d
+      - name: Test HTTPS, SPA, sessions, migrations and private media
+        shell: bash
+        run: |
+          set -euo pipefail
+          root_ca="$RUNNER_TEMP/recipe-ci-ca.crt"
+          for attempt in $(seq 1 45); do
+            if docker compose cp web:/data/caddy/pki/authorities/local/root.crt "$root_ca" 2>/dev/null && test -s "$root_ca"; then break; fi
+            sleep 2
+          done
+          test -s "$root_ca"
+          request=(curl --silent --show-error --cacert "$root_ca")
+          "${request[@]}" --retry 15 --retry-all-errors --fail https://localhost/api/v1/health/live | jq -e '.status == "ok"'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost/)" = 308
+          "${request[@]}" --fail https://localhost/o/123/recipes/new | grep -F 'Рецепты мастера'
+          "${request[@]}" --fail https://localhost/example | grep -F 'Рецепты мастера'
+          "${request[@]}" --fail https://localhost/examples/vegetables/recipe.json | jq -e 'type == "object"'
+          test "$("${request[@]}" --range 0-31 -o "$RUNNER_TEMP/recipe-clip.bytes" -w '%{http_code}' https://localhost/examples/vegetables/vegetables.mp4)" = 206
+          test "$(wc -c < "$RUNNER_TEMP/recipe-clip.bytes")" -eq 32
+          "${request[@]}" --fail https://localhost/hero-kneading.jpg -o "$RUNNER_TEMP/recipe-hero.jpg"
+          test -s "$RUNNER_TEMP/recipe-hero.jpg"
+          test "$("${request[@]}" -o /dev/null -w '%{http_code}' https://localhost/api/v1/auth/me)" = 401
+          "${request[@]}" --fail --dump-header "$RUNNER_TEMP/recipe-csrf.headers" https://localhost/api/v1/auth/csrf | jq -e '(.csrf_token | length) > 0'
+          grep -iqE '^set-cookie: csrftoken=.*secure' "$RUNNER_TEMP/recipe-csrf.headers"
+          test "$("${request[@]}" -o /dev/null -w '%{http_code}' https://localhost/private-media/missing.mp4)" = 404
+          docker compose exec -T api python manage.py migrate --check
+          docker compose exec -T api python manage.py check --deploy --fail-level ERROR
+          docker compose exec -T api python manage.py shell -c "from core.models import User; assert not User.objects.exists()"
+          docker compose exec -T api sh -ec 'test "$(id -u)" != 0 && touch /var/lib/kitchen/media/ci-volume-test'
+          docker compose exec -T worker sh -ec 'test -e /var/lib/kitchen/media/ci-volume-test && ffprobe -version >/dev/null'
+          docker compose exec -T worker python manage.py processing_worker --once
+      - name: Show status on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail=60 migrate api worker web
+      - name: Release ephemeral services
+        if: always()
+        run: docker compose down --volumes

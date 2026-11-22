@@ -41,17 +41,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--preview', action='store_true', help='Build and serve a stable preview on port 4173')
+    parser.add_argument('--port', type=int, help='Override the local browser port')
     args = parser.parse_args()
     if not PYTHON.exists():
         raise SystemExit('Create .venv with Python 3.12+ and install requirements.lock first. See README.md.')
     env = load_environment()
+    port = args.port or (4173 if args.preview else 5173)
+    if not 1 <= port <= 65535 or port == 8000:
+        parser.error('Choose a web port in 1..65535 other than the API port 8000.')
+    local_origins = [f'http://{host}:{port}' for host in ('localhost', '127.0.0.1')]
+    env['CSRF_TRUSTED_ORIGINS'] = ','.join(filter(None, [env.get('CSRF_TRUSTED_ORIGINS'), *local_origins]))
     if len(env.get('DEMO_PASSWORD', '')) < 12:
         raise SystemExit('Set DEMO_PASSWORD (12+ characters) in .env for local demo accounts.')
     if not args.prepare_only:
         check_port(8000)
-        check_port(4173 if args.preview else 5173)
-    if not (ROOT / 'backend/private-media/demo-process.mp4').exists():
-        run([PYTHON, 'scripts/generate_demo_video.py'], env)
+        check_port(port)
     run([PYTHON, 'manage.py', 'migrate', '--noinput'], env, ROOT / 'backend')
     run([PYTHON, 'manage.py', 'seed_demo'], env, ROOT / 'backend')
     if args.prepare_only:
@@ -65,10 +69,9 @@ def main():
     try:
         processes.append(subprocess.Popen([str(PYTHON), 'manage.py', 'runserver', '127.0.0.1:8000', '--noreload'], cwd=ROOT / 'backend', env=env))
         processes.append(subprocess.Popen([str(PYTHON), 'manage.py', 'processing_worker'], cwd=ROOT / 'backend', env=env))
-        web_args = [npm, 'run', 'preview', '--', '--port', '4173'] if args.preview else [npm, 'run', 'dev']
+        web_args = [npm, 'run', 'preview' if args.preview else 'dev', '--', '--port', str(port), '--strictPort']
         processes.append(subprocess.Popen(web_args, cwd=ROOT / 'frontend', env=env))
-        port = 4173 if args.preview else 5173
-        print(f'\nОпыт мастера: http://127.0.0.1:{port} · API + web + processing worker · Ctrl+C stops all services.\n', flush=True)
+        print(f'\nРецепты мастера · http://127.0.0.1:{port}\n', flush=True)
         while all(process.poll() is None for process in processes):
             time.sleep(0.5)
     except KeyboardInterrupt:

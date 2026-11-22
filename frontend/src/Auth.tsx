@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ensureCsrf } from "./api";
-import { Brand, ErrorBanner, Icon, PackageArt } from "./components";
+import { Brand, ErrorBanner, Icon } from "./components";
 import type { Session } from "./types";
 export function Auth({
   onLogin,
@@ -41,32 +41,27 @@ export function Auth({
       <section className="auth-story">
         <Brand />
         <div className="auth-intro">
-          <span className="eyebrow light">Знания вашей команды</span>
           <h1>
-            Хорошую работу
+            Книга рецептов
             <br />
-            можно передать.
+            вашей кухни
           </h1>
           <p>
-            Сохраните опыт мастера в понятных шагах.
-            <br />
-            Чтобы каждый знал, как сделать правильно.
+            Откройте ингредиенты и шаги с фотографиями, чтобы готовить вместе с
+            автором рецепта.
           </p>
-          <PackageArt />
         </div>
         <p className="auth-bottom">
-          <Icon name="shield" size={16} /> Только для участников вашей
-          организации
+          <Icon name="shield" size={16} /> Доступ для участников кухни
         </p>
       </section>
       <section className="auth-form-section">
         <div className="auth-form-wrap">
-          <span className="eyebrow">Рабочее пространство</span>
-          <h2>{renewEmail ? "Сессия завершилась" : "Рады видеть вас"}</h2>
+          <h2>{renewEmail ? "Сессия завершилась" : "Вход в книгу рецептов"}</h2>
           <p className="muted">
             {renewEmail
               ? "Войдите снова. Несохранённые изменения остаются в этом окне."
-              : "Войдите, чтобы продолжить работу с инструкциями."}
+              : "Используйте почту, на которую вам выдали доступ."}
           </p>
           <form onSubmit={submit} className="stack">
             <label>
@@ -77,7 +72,7 @@ export function Auth({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="name@company.kz"
+                placeholder="name@example.com"
                 disabled={busy || !!renewEmail}
               />
             </label>
@@ -106,20 +101,20 @@ export function Auth({
             </label>
             {error && <ErrorBanner error={error} />}
             <button className="button primary full" disabled={busy}>
-              {busy ? "Входим…" : "Войти в пространство"}
+              {busy ? "Входим…" : "Войти"}
               <Icon name="arrow" />
             </button>
           </form>
           {demoPassword && (
             <div className="demo-login">
               <span className="eyebrow">Локальная демонстрация</span>
-              <p>Выберите роль. Данные учебные; права проверяет сервер.</p>
+              <p>Выберите, под какой ролью войти в учебную кухню.</p>
               <div className="demo-roles">
                 {[
                   ["admin", "Администратор"],
-                  ["author", "Автор"],
+                  ["author", "Автор рецептов"],
                   ["reviewer", "Проверяющий"],
-                  ["reader", "Читатель"],
+                  ["reader", "Готовлю по рецептам"],
                 ].map(([role, label]) => (
                   <button
                     className="button subtle"
@@ -137,7 +132,7 @@ export function Auth({
             </div>
           )}
           <p className="auth-help">
-            Доступ выдаёт администратор команды.
+            Доступ выдаёт администратор вашей кухни.
             <br />
             Если не получается войти, обратитесь к нему.
           </p>

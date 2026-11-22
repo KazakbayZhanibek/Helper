@@ -6,6 +6,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 from ai_drafts.providers import ProviderFailure, chat_completion_options, endpoint_configuration, json_request, provider_api_key, setting, enabled, enforce_budget_body, record_provider_usage, schema_for_provider
 from ai_drafts.validation import InvalidModelOutput, parse_json
+from ai_drafts.providers import RECIPE_GUIDANCE
 from .teaching import PROCESS_STYLE
 
 SCHEMA = json.loads((Path(__file__).resolve().parents[2] / 'contracts' / 'visual-step-draft.schema.json').read_text())
@@ -121,6 +122,7 @@ def capabilities(organization):
 
 
 class VisualProvider:
+    culinary_guidance = False
     protocol = '2'
     short_action_coverage = None
     frame_grounding = None
@@ -139,6 +141,8 @@ class VisualProvider:
                                           short_action_coverage=self.short_action_coverage,
                                           frame_grounding=self.frame_grounding,
                                           demonstration_wire=self.demonstration_wire)
+        if self.culinary_guidance:
+            system = system.replace('Это правило для любых работ, не рецепт.', '') + '\n' + RECIPE_GUIDANCE
         metadata = ([{'image_index': index, 'timestamp_ms': frame['timestamp_ms']} for index, frame in enumerate(frames, 1)]
                     if self.frame_grounding in ('v2', 'v3') else
                     [{'id': str(frame['id']), 'sequence': frame['sequence'], 'timestamp_ms': frame['timestamp_ms']} for frame in frames])

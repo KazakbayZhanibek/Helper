@@ -231,7 +231,7 @@ export function ProcessingPanel({
       setPreview(null);
       setReplace(false);
       setNotice(
-        "Шаги добавлены в рабочую версию. Проверьте их по записи перед отправкой мастеру.",
+        "Шаги добавлены в рабочую версию. Проверьте их по записи перед отправкой на проверку.",
       );
     });
   }
@@ -247,7 +247,7 @@ export function ProcessingPanel({
     >
       <div>
         <span className="eyebrow">Видео и шаги</span>
-        <h3>От записи к инструкции</h3>
+        <h3>Подготовка видео и шагов</h3>
       </div>
       {jobs
         .filter((job) =>
@@ -466,7 +466,7 @@ export function ProcessingPanel({
       {latest && (
         <div className="proposal-ready">
           <strong>Предложение ИИ готово</strong>
-          <p>{latest.steps.length} шагов · отдельно от текущей инструкции</p>
+          <p>{latest.steps.length} шагов · отдельно от текущего рецепта</p>
           <button
             className="button secondary"
             disabled={busy}

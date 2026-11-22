@@ -68,6 +68,9 @@ export type Version = {
   };
 };
 export type InstructionSummary = {
+  kind: "recipe" | "legacy";
+  ingredient_count: number;
+  servings: number | null;
   id: string;
   title: string;
   purpose: string;

@@ -1,0 +1,35 @@
+https://{$RECIPE_HOST} {
+	root * /srv/recipes
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000"
+		Permissions-Policy "camera=(self), microphone=(self)"
+	}
+
+	@api path /api /api/* /health/live
+	handle @api {
+		request_body {
+			max_size 500MiB
+		}
+		reverse_proxy api:8000
+	}
+
+	@spa path / /login /example /o/*
+	handle @spa {
+		rewrite * /index.html
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	handle /assets/* {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		file_server
+	}
+}

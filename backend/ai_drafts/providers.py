@@ -33,6 +33,13 @@ SYSTEM_PROMPT = '''Ты составляешь НЕУТВЕРЖДЁННЫЙ че
 Если действий недостаточно, верни пустые steps и предупреждение insufficient_evidence или non_procedural_speech. Пробелы в речи помечай missing_parameters или unclear_speech. Результат не является готовой или утверждённой инструкцией. У тебя нет инструментов и права публикации.'''
 
 
+RECIPE_GUIDANCE = (
+    'Это кулинарный рецепт. Объясняй по порядку, как повторить показанное или сказанное действие с продуктом. '
+    'Отличай длительность записи от времени приготовления. Не угадывай состав, массу, температуру, '
+    'степень готовности или этапы за пределами источника. Недостающие параметры оставь для проверки автором.'
+)
+
+
 class ProviderFailure(Exception):
     def __init__(self, code, message, retryable=False):
         self.code, self.message, self.retryable = code, message, retryable
@@ -275,10 +282,11 @@ class StepDraftProvider:
 
     def generate(self, request, *, context=None):
         receipt = getattr(self, '_usage_recorder', None)
-        messages = [{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': json.dumps(request, ensure_ascii=False)}]
+        system = SYSTEM_PROMPT + ('\n' + RECIPE_GUIDANCE if request.get('task') == 'recipe' else '')
+        messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(request, ensure_ascii=False)}]
         if self.provider == 'codex':
             from .codex_provider import generate
-            return generate(model=self.model, system=SYSTEM_PROMPT, request=request, schema=SCHEMA, context=context)
+            return generate(model=self.model, system=system, request=request, schema=SCHEMA, context=context)
         if self.provider == 'ollama':
             body = {'model': self.model, 'messages': messages, 'stream': False, 'format': SCHEMA, 'keep_alive': 0, 'options': {'temperature': 0, 'num_predict': 4096, 'num_ctx': 8192}}
             result = json_request(self.endpoint + '/api/chat', body, timeout=90)

@@ -1,16 +1,26 @@
-"""Create synthetic-only local demo. Never alters an existing user's password."""
+"""Install a reviewed local recipe with footage shipped with this checkout."""
+import json
 import os
+import shutil
+from pathlib import Path
+
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from core.models import User, Organization, Membership, WorkingStep
+
 from core import services as s
+from core.models import Instruction, MediaAsset, Membership, Organization, User
+
+DEMO_ORG = '7ea2d071-f15f-4fe9-b440-f1622b3e17cf'
+DEMO_ASSET = '3fc24e73-92dd-47db-98c2-3ce0fe2695bc'
 
 
 class Command(BaseCommand):
-    help = 'Seed synthetic demo content; requires DEMO_MODE and DEMO_PASSWORD.'
+    help = 'Install the local kitchen, demo accounts and a reviewed video recipe.'
+
     def add_arguments(self, parser):
         parser.add_argument('--password', default=None)
+
     @transaction.atomic
     def handle(self, *args, **options):
         if not settings.DEMO_MODE or not settings.DEBUG:
@@ -18,38 +28,37 @@ class Command(BaseCommand):
         password = options['password'] or os.getenv('DEMO_PASSWORD')
         if not password or len(password) < 12:
             raise CommandError('Set DEMO_PASSWORD to a password of at least 12 characters.')
-        if not (settings.PRIVATE_MEDIA_ROOT / 'demo-process.mp4').is_file():
-            raise CommandError('Generate private-media/demo-process.mp4 before seeding.')
-        org, _ = Organization.objects.get_or_create(id='7ea2d071-f15f-4fe9-b440-f1622b3e17cf', defaults={'name': 'Учебная мастерская'})
-        users = {}
-        for role, name in [('admin', 'Айдар · администратор'), ('author', 'Алия · автор'), ('reviewer', 'Марат · мастер'), ('reader', 'Дана · сотрудник')]:
+        org, _ = Organization.objects.get_or_create(id=DEMO_ORG, defaults={'name': 'Учебная кухня'})
+        org = Organization.objects.select_for_update().get(pk=org.pk)
+        members = {}
+        for role, name in [('admin', 'Администратор кухни'), ('author', 'Алия'), ('reviewer', 'Марат'), ('reader', 'Дана')]:
             email = f'{role}@demo.local'
             user = User.objects.filter(email=email).first()
             if user is None:
                 user = User.objects.create_user(email, password, display_name=name)
-            Membership.objects.get_or_create(organization=org, user=user, defaults={'role': role})
-            users[role] = user
-        author = Membership.objects.get(organization=org, user=users['author'])
-        reviewer = Membership.objects.get(organization=org, user=users['reviewer'])
-        if org.instruction_set.exists():
-            self.stdout.write('Demo organization already contains instructions; preserved existing work.')
+            members[role], _ = Membership.objects.get_or_create(organization=org, user=user, defaults={'role': role})
+        source_dir = Path(__file__).resolve().parents[4] / 'frontend' / 'public' / 'examples' / 'vegetables'
+        media_dir = settings.PRIVATE_MEDIA_ROOT / 'recipe-demo-v1'
+        media_dir.mkdir(parents=True, exist_ok=True)
+        for name in ['vegetables.mp4', 'vegetables.jpg']:
+            if not (media_dir / name).is_file():
+                shutil.copyfile(source_dir / name, media_dir / name)
+        if MediaAsset.objects.filter(pk=DEMO_ASSET, organization=org).exists():
+            self.stdout.write('Учебная кухня готова.')
             return
-        items = [
-            ('Комплектация учебного набора', 'Собрать и проверить демонстрационный набор перед упаковкой.', True),
-            ('Упаковка учебного набора', 'Уложить три учебных предмета в коробку и проверить комплектность.', False),
-        ]
-        steps = [
-            ('Проверьте состав набора', 'Сверьте три учебных предмета с составом набора. Убедитесь, что все предметы на месте.', 0, 15000),
-            ('Уложите предметы в коробку', 'Разместите три учебных предмета в коробке, как показано в демонстрационном фрагменте.', 15000, 30000),
-            ('Добавьте карточку комплекта', 'Положите карточку комплекта поверх предметов. Ещё раз сверьте содержимое коробки с карточкой.', 30000, 45000),
-            ('Закройте и отметьте комплект', 'Закройте коробку и отметьте завершение комплектации учебного набора.', 45000, 60000),
-        ]
-        for title, purpose, published in items:
-            data, _ = s.create_instruction(author, {'title': title, 'purpose': purpose, 'language': 'ru', 'demo_source': True})
-            saved = s.save_working(author, data['instruction_id'], {'title': title, 'purpose': purpose, 'language': 'ru', 'steps': [{'id': None, 'title': t, 'description': d, 'start_ms': a, 'end_ms': b, 'evidence_segment_ids': []} for t, d, a, b in steps]}, data['etag'])
-            if published:
-                reviewed = s.workflow_action(author, data['instruction_id'], 'submit-review', {}, saved['etag'])
-                for step in reviewed['steps']:
-                    reviewed = s.workflow_action(reviewer, data['instruction_id'], 'review/check-step', {'step_id': step['id'], 'checked': True}, reviewed['etag'])
-                s.publish(reviewer, data['instruction_id'], {'confirmations': {key: True for key in s.CONFIRMATIONS}}, reviewed['etag'])
-        self.stdout.write(self.style.SUCCESS('Demo created: admin/author/reviewer/reader@demo.local. Password comes from DEMO_PASSWORD.'))
+        author, reviewer = members['author'], members['reviewer']
+        example = json.loads((source_dir / 'recipe.json').read_text(encoding='utf-8'))
+        data = {key: example[key] for key in ('title', 'purpose', 'language', 'recipe')}
+        draft, _ = s.create_instruction(author, data)
+        asset = MediaAsset.objects.create(id=DEMO_ASSET, organization=org, storage_key='recipe-demo-v1/vegetables.mp4',
+                                          thumbnail_key='recipe-demo-v1/vegetables.jpg', is_demo=True,
+                                          width=960, height=540, has_audio=False, duration_ms=example['duration_ms'])
+        pk = draft['instruction_id']
+        Instruction.objects.filter(pk=pk, organization=org).update(source_asset=asset)
+        steps = [{**step, 'id': None, 'evidence_segment_ids': []} for step in example['steps']]
+        saved = s.save_working(author, pk, {**data, 'steps': steps}, draft['etag'])
+        reviewed = s.workflow_action(author, pk, 'submit-review', {}, saved['etag'])
+        for step in reviewed['steps']:
+            reviewed = s.workflow_action(reviewer, pk, 'review/check-step', {'step_id': step['id'], 'checked': True}, reviewed['etag'])
+        s.publish(reviewer, pk, {'confirmations': {key: True for key in s.CONFIRMATIONS}}, reviewed['etag'])
+        self.stdout.write(self.style.SUCCESS('Опубликован учебный рецепт овощной нарезки.'))

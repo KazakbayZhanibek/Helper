@@ -1,0 +1,109 @@
+name: recipe-kitchen
+
+x-application: &application
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.api
+  image: recipe-kitchen-api:local
+  environment: &application-env
+    DJANGO_DEBUG: "0"
+    DEMO_MODE: "0"
+    DJANGO_TRUST_HTTPS_PROXY: "1"
+    DJANGO_SECRET_KEY: ${RECIPE_SECRET_KEY:?Set RECIPE_SECRET_KEY in the deployment environment}
+    DJANGO_ALLOWED_HOSTS: ${RECIPE_HOST:?Set RECIPE_HOST to the public hostname}
+    CSRF_TRUSTED_ORIGINS: https://${RECIPE_HOST:?Set RECIPE_HOST}
+    POSTGRES_HOST: db
+    POSTGRES_DB: recipes
+    POSTGRES_USER: recipes
+    POSTGRES_PASSWORD: ${RECIPE_DB_PASSWORD:?Set RECIPE_DB_PASSWORD}
+    PRIVATE_MEDIA_ROOT: /var/lib/kitchen/media
+    STEP_DRAFT_BACKEND: openrouter
+    STEP_DRAFT_ENDPOINT: https://openrouter.ai/api/v1
+    STEP_DRAFT_MODEL: openrouter/free
+    OPENROUTER_TOTAL_BUDGET_MICROUSD: "0"
+    EXTERNAL_AI_ENABLED: ${RECIPE_EXTERNAL_AI:-0}
+    OPENROUTER_API_KEY: ${RECIPE_OPENROUTER_KEY:-}
+    VISUAL_ACTION_EVIDENCE: "1"
+    VISUAL_SHORT_ACTION_COVERAGE: "1"
+    VISUAL_FRAME_GROUNDING: "1"
+    VISUAL_FRAME_GROUNDING_VERSION: v3
+    VISUAL_DEMONSTRATION_SHARED_CAPTIONS: "1"
+  volumes:
+    - media:/var/lib/kitchen/media
+  init: true
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: recipes
+      POSTGRES_USER: recipes
+      POSTGRES_PASSWORD: ${RECIPE_DB_PASSWORD:?Set RECIPE_DB_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "recipes", "-d", "recipes"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *application
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *application
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os, urllib.request;
+          check = urllib.request.Request('http://127.0.0.1:8000/health/live',
+          headers={'Host': os.environ['DJANGO_ALLOWED_HOSTS'], 'X-Forwarded-Proto': 'https'});
+          urllib.request.urlopen(check, timeout=4).close()
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    <<: *application
+    command: ["python", "manage.py", "processing_worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    image: recipe-kitchen-web:local
+    environment:
+      RECIPE_HOST: ${RECIPE_HOST:?Set RECIPE_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  media:
+  caddy-data:
+  caddy-config:

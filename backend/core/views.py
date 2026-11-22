@@ -4,7 +4,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import StreamingHttpResponse, HttpResponse
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
@@ -64,25 +64,46 @@ class LogoutView(APIView):
 class InstructionsView(APIView):
     def get(self, request, org_id):
         member = s.membership(request.user, org_id)
-        query = member.organization.instruction_set.filter(lifecycle='active').select_related('working_copy', 'current_version', 'owner', 'source_asset').order_by('-updated_at')
+        query = member.organization.instruction_set.filter(lifecycle='active')
         reader = member.role == 'reader'
         if reader:
             query = query.filter(current_version__isnull=False)
-        search = request.query_params.get('q', '').strip()[:200]
-        language = request.query_params.get('language')
-        status = request.query_params.get('status')
-        if search:
+
+        closed_publication = Q(working_copy__is_open=False, current_version__isnull=False)
+
+        def visible(published, working):
             if reader:
-                query = query.filter(published_search_text__icontains=search)
-            else:
-                query = query.filter(Q(working_copy__title__icontains=search) | Q(working_copy__purpose__icontains=search) | Q(published_search_text__icontains=search))
-        # Filter against what this role can see, not against secret working text.
-        items = [s.summary(item, reader) for item in query]
+                return published
+            return (closed_publication & published) | (~closed_publication & working)
+
+        search = s.normalize_library_search(request.query_params.get('q', '').strip()[:200])
+        if search:
+            # Authors can still find a publication when it also has an open revision.
+            matches = Q(published_search_text__contains=search)
+            if not reader:
+                matches |= Q(working_copy__library_search_text__contains=search)
+            query = query.filter(matches)
+        kind = request.query_params.get('kind')
+        if kind:
+            if kind not in ('recipe', 'legacy'):
+                s.fail('VALIDATION_ERROR', 'Выберите рецепты или архив.')
+            recipe = visible(Q(current_version__snapshot__has_key='recipe'), Q(working_copy__recipe__isnull=False))
+            query = query.filter(recipe) if kind == 'recipe' else query.exclude(recipe)
+        language = request.query_params.get('language')
         if language:
-            items = [item for item in items if item['language'] == language]
+            query = query.filter(visible(Q(current_version__snapshot__language=language), Q(working_copy__language=language)))
+        status = request.query_params.get('status')
         if status:
-            items = [item for item in items if item['status'] == status]
-        total = len(items)
+            if status == 'published':
+                if not reader:
+                    query = query.filter(closed_publication)
+            elif reader:
+                query = query.none()
+            elif status == 'draft':
+                query = query.filter(Q(working_copy__is_open=True, working_copy__workflow='draft') |
+                                     Q(working_copy__is_open=False, current_version__isnull=True))
+            else:
+                query = query.filter(working_copy__is_open=True, working_copy__workflow=status)
         try:
             offset = int(request.query_params.get('cursor', '0'))
             page_size = min(100, max(1, int(request.query_params.get('page_size', '20'))))
@@ -90,7 +111,12 @@ class InstructionsView(APIView):
                 raise ValueError()
         except ValueError:
             s.fail('VALIDATION_ERROR', 'Некорректный параметр страницы.')
-        return Response({'items': items[offset:offset + page_size], 'next_cursor': str(offset + page_size) if offset + page_size < total else None, 'total': total})
+        total = query.count()
+        query = query.select_related('working_copy', 'current_version', 'owner', 'source_asset')
+        if not reader:
+            query = query.annotate(working_step_count=Count('working_copy__steps'))
+        page = query.order_by('-updated_at', 'id')[offset:offset + page_size] if offset < total else ()
+        return Response({'items': [s.summary(item, reader) for item in page], 'next_cursor': str(offset + page_size) if offset + page_size < total else None, 'total': total})
     def post(self, request, org_id):
         member = s.membership(request.user, org_id, s.WRITERS)
         data, status = s.idempotent(request, member, lambda: s.create_instruction(member, request.data))

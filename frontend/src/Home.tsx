@@ -9,212 +9,133 @@ export function Home({
   session: Session | null;
   navigate: Navigate;
 }) {
-  const destination = session?.organizations[0]
-    ? libraryPath(session.organizations[0].id)
-    : "/login";
-  const enterLabel = session ? "Открыть пространство" : "Войти в пространство";
+  const organization = session?.organizations[0];
+  const destination = organization ? libraryPath(organization.id) : "/login";
+  const enterLabel = organization
+    ? "Открыть книгу рецептов"
+    : "Войти в книгу рецептов";
+
   return (
-    <div className="public-site">
+    <div className="public-site recipe-site">
       <a className="skip-link" href="#home-main">
         Перейти к содержимому
       </a>
       <header className="public-header">
         <Brand />
-        <nav aria-label="О продукте">
+        <nav aria-label="Главное меню">
           <a href="#how-it-works">Как это работает</a>
           <button
             className="button secondary"
             onClick={() => navigate(destination)}
           >
-            {enterLabel}
+            {organization ? "Мои рецепты" : "Войти"}{" "}
             <Icon name="arrow" size={16} />
           </button>
         </nav>
       </header>
       <main id="home-main">
-        <section className="home-hero" aria-labelledby="home-title">
+        <section className="home-hero recipe-hero" aria-labelledby="home-title">
           <div className="home-intro">
-            <span className="eyebrow">Опыт команды — в понятных шагах</span>
             <h1 id="home-title">
-              Покажите работу.
+              Ваши рецепты
               <br />
-              Сохраните мастерство.
+              из видео
             </h1>
             <p className="home-lead">
-              Превратите запись рабочего процесса в инструкцию для команды. ИИ
-              подготовит черновик, а мастер проверит детали по исходному видео.
+              Снимите, как вы готовите. ИИ предложит шаги с фотографиями из
+              записи. Добавьте ингредиенты и порции, чтобы по вашему рецепту мог
+              приготовить другой человек.
             </p>
-            <button
-              className="button primary"
-              onClick={() => navigate(destination)}
-            >
-              {enterLabel}
-              <Icon name="arrow" size={18} />
-            </button>
-            <p className="home-pilot">
-              Рабочий пилот · видео с камеры или готовый файл
-            </p>
-          </div>
-          <div
-            className="home-example"
-            aria-label="Пример структуры будущей инструкции"
-          >
-            <div className="home-example-head">
-              <span className="eyebrow">Из записи в инструкцию</span>
-              <span className="home-example-tag">Пример структуры</span>
-            </div>
-            <div className="home-film">
-              <div className="home-film-play">
-                <Icon name="play" size={27} />
-              </div>
-              <div>
-                <strong>Рабочий процесс</strong>
-                <span>Исходная запись остаётся рядом</span>
-              </div>
-              <div className="home-film-timeline" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-            <ol className="home-example-steps">
-              <li>
-                <span>01</span>
-                <div>
-                  <strong>Подготовить рабочее место</strong>
-                  <small>Сверить с кадрами записи</small>
-                </div>
-              </li>
-              <li>
-                <span>02</span>
-                <div>
-                  <strong>Выполнить операцию</strong>
-                  <small>Уточнить движение и параметры</small>
-                </div>
-              </li>
-              <li>
-                <span>03</span>
-                <div>
-                  <strong>Проверить результат</strong>
-                  <small>Добавить критерии мастера</small>
-                </div>
-              </li>
-            </ol>
-            <div className="home-human-check">
-              <Icon name="eye" size={19} />
-              <span>Публикация после проверки человеком</span>
+            <div className="button-row">
+              <button
+                className="button primary"
+                onClick={() => navigate(destination)}
+              >
+                {enterLabel} <Icon name="arrow" size={18} />
+              </button>
+              <a className="button secondary" href="/example">
+                Посмотреть пример
+              </a>
             </div>
           </div>
+          <figure className="recipe-example">
+            <img
+              src="/hero-kneading.jpg"
+              width="1120"
+              height="630"
+              fetchPriority="high"
+              alt="Рука прижимает тесто к присыпанной мукой поверхности"
+            />
+            <figcaption>
+              <span className="recipe-image-kicker">
+                Пример шага · Замес теста
+              </span>
+              <h2>Прижмите тесто ладонью</h2>
+              <p>
+                Поднимите край теста, поверните кусок и снова прижмите его к
+                столу.
+              </p>
+              <a
+                className="recipe-credit"
+                href="https://www.pexels.com/video/a-person-kneading-the-dough-7236946/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Кадр из видео Eva Bronzini / Pexels
+              </a>
+            </figcaption>
+          </figure>
         </section>
         <section
-          className="home-process"
+          className="home-process recipe-process"
           id="how-it-works"
           aria-labelledby="process-title"
         >
           <div className="home-section-heading">
-            <span className="eyebrow">Один сайт для всей работы</span>
             <h2 id="process-title">
-              От первого кадра
+              Как составить
               <br />
-              до инструкции для коллег.
+              видеорецепт
             </h2>
-            <p>
-              Запись, черновик и утверждённая версия живут в одном рабочем
-              пространстве команды.
-            </p>
           </div>
           <ol className="home-process-list">
             <li>
-              <span>01</span>
+              <span aria-hidden="true">01</span>
               <div>
-                <h3>Запишите процесс</h3>
+                <h3>Снимите приготовление</h3>
                 <p>
-                  Включите камеру или загрузите готовое видео. Снимайте руки,
-                  инструменты и результат действия.
+                  Загрузите готовое видео или включите камеру. Держите руки и
+                  продукты в кадре, а количество и время называйте вслух.
                 </p>
               </div>
             </li>
             <li>
-              <span>02</span>
+              <span aria-hidden="true">02</span>
               <div>
-                <h3>Получите черновик</h3>
+                <h3>Проверьте шаги и фотографии</h3>
                 <p>
-                  ИИ последовательно разбирает запись по кадрам. Неясные
-                  фрагменты пересматривает подробнее в пределах заданного
-                  лимита.
+                  Сверьте черновик ИИ с записью. Уточните движения, внесите
+                  ингредиенты и укажите, сколько порций получится. Лимит
+                  распознавания виден до запуска.
                 </p>
               </div>
             </li>
             <li>
-              <span>03</span>
+              <span aria-hidden="true">03</span>
               <div>
-                <h3>Добавьте опыт мастера</h3>
+                <h3>Откройте рецепт своей кухне</h3>
                 <p>
-                  Проверьте действия и время, уточните параметры. Движения между
-                  кадрами и скрытые операции могут остаться незамеченными.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span>04</span>
-              <div>
-                <h3>Откройте инструкцию команде</h3>
-                <p>
-                  После проверки опубликуйте версию с пошаговым описанием и
-                  исходным видео.
+                  После проверки опубликуйте рецепт. Участники смогут открыть
+                  его с телефона и сверяться с фотографиями во время готовки.
                 </p>
               </div>
             </li>
           </ol>
         </section>
-        <section className="home-budget" aria-labelledby="budget-title">
-          <div>
-            <span className="eyebrow light">Расходы под контролем</span>
-            <h2 id="budget-title">
-              Сначала лимит.
-              <br />
-              Затем анализ.
-            </h2>
-          </div>
-          <div>
-            <p>
-              Перед запуском видно количество фрагментов и доступных обращений к
-              ИИ. Когда бюджета недостаточно, анализ останавливается и
-              показывает, что осталось проверить.
-            </p>
-            <p>
-              В тестовом режиме подписки действует лимит запросов. При работе
-              через поддерживаемый API расходы учитываются отдельно в долларах.
-            </p>
-          </div>
-        </section>
-        <section className="home-next" aria-labelledby="next-title">
-          <div>
-            <span className="eyebrow">Начните с одного процесса</span>
-            <h2 id="next-title">
-              То, что знает мастер,
-              <br />
-              сможет повторить команда.
-            </h2>
-          </div>
-          <button
-            className="button primary"
-            onClick={() => navigate(destination)}
-          >
-            {enterLabel}
-            <Icon name="arrow" size={18} />
-          </button>
-        </section>
       </main>
       <footer className="public-footer">
         <Brand />
-        <p>Записать. Проверить. Передать опыт.</p>
-        <a href="#home-title">Наверх ↑</a>
+        <a href="#home-main">Наверх ↑</a>
       </footer>
     </div>
   );

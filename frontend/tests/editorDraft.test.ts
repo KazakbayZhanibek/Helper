@@ -81,5 +81,8 @@ test("an untouched legacy instruction stays outside the cookbook", () => {
   const draft = toDraft(working);
   assert.equal(payload(draft).recipe, null);
   draft.ingredientsInput = "Яблоко";
-  assert.deepEqual(payload(draft).recipe, { ingredients: ["Яблоко"], servings: null });
+  assert.deepEqual(payload(draft).recipe, {
+    ingredients: ["Яблоко"],
+    servings: null,
+  });
 });

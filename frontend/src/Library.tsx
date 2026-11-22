@@ -6,7 +6,7 @@ import {
   ErrorBanner,
   Icon,
   Loading,
-  PackageArt,
+  RecipeCover,
   Status,
   date,
   languageName,
@@ -17,21 +17,22 @@ import type {
   Language,
   Navigate,
   Organization,
-  Session,
   WorkingCopy,
 } from "./types";
 export function Library({
   org,
-  session,
   navigate,
 }: {
   org: Organization;
-  session: Session;
   navigate: Navigate;
 }) {
   const initial = new URLSearchParams(location.search);
   const [query, setQuery] = useState(initial.get("q") || "");
-  const [status, setStatus] = useState(initial.get("status") || "");
+  const [status, setStatus] = useState(
+    org.role === "reader" ? "" : initial.get("status") || "",
+  );
+  const [archive, setArchive] = useState(initial.get("kind") === "legacy");
+  const kind = archive ? "legacy" : "recipe";
   const [language, setLanguage] = useState(initial.get("language") || "");
   const [items, setItems] = useState<InstructionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,23 +48,27 @@ export function Library({
     moreAbort.current?.abort();
     setMoreBusy(false);
     const abort = new AbortController();
+    setLoading(true);
+    setError("");
+    setCursor(null);
     const timer = setTimeout(() => {
-      setLoading(true);
-      setError("");
       const params = new URLSearchParams();
       if (query.trim()) params.set("q", query.trim());
       if (status) params.set("status", status);
       if (language) params.set("language", language);
+      if (archive) params.set("kind", kind);
       history.replaceState(
         {},
         "",
         libraryPath(org.id) + (params.size ? "?" + params : ""),
       );
+      params.set("kind", kind);
       api<{ items: InstructionSummary[]; next_cursor: string | null }>(
         `${orgApi(org.id)}/instructions?${params}`,
         { signal: abort.signal },
       )
         .then((r) => {
+          if (abort.signal.aborted) return;
           setItems(r.items);
           setCursor(r.next_cursor);
         })
@@ -79,7 +84,7 @@ export function Library({
       abort.abort();
       moreAbort.current?.abort();
     };
-  }, [query, status, language, org.id, retry]);
+  }, [query, status, language, org.id, retry, kind, archive]);
   async function more() {
     if (!cursor || moreBusy) return;
     const generation = searchGeneration.current;
@@ -87,8 +92,8 @@ export function Library({
     moreAbort.current = abort;
     setMoreBusy(true);
     try {
-      const params = new URLSearchParams({ cursor });
-      if (query) params.set("q", query);
+      const params = new URLSearchParams({ cursor, kind });
+      if (query.trim()) params.set("q", query.trim());
       if (status) params.set("status", status);
       if (language) params.set("language", language);
       const r = await api<{
@@ -108,62 +113,64 @@ export function Library({
   }
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading recipe-library-heading">
         <div>
-          <div className="eyebrow">Библиотека команды</div>
-          <h1>Рабочие инструкции</h1>
-          <p className="muted">Нужный опыт — в нужный момент.</p>
+          <h1>{archive ? "Архив материалов" : "Книга рецептов"}</h1>
+          <p className="muted">
+            {archive
+              ? "Здесь хранятся прежние инструкции вашей команды."
+              : reader
+                ? "Выберите блюдо и готовьте по шагам."
+                : "Создавайте рецепты и делитесь ими с участниками вашей кухни."}
+          </p>
         </div>
         {!reader && (
           <button
             className="button primary"
             onClick={() => navigate(libraryPath(org.id) + "/new")}
           >
-            <Icon name="plus" />
-            Новая инструкция
+            <Icon name="plus" /> Новый рецепт
           </button>
         )}
       </div>
-      <section className="library-intro">
-        <div>
-          <span className="eyebrow">От мастера к команде</span>
-          <h2>
-            Опыт, который
-            <br />
-            остаётся в команде.
-          </h2>
-          <p>
-            Понятные шаги. Наглядное видео.
-            <br />
-            Проверено человеком, который знает работу.
-          </p>
-          <span className="intro-foot">
-            <span className="tiny-check">
-              <Icon name="check" size={12} />
-            </span>{" "}
-            Сначала проверка — потом публикация
-          </span>
-        </div>
-        <div className="intro-visual">
-          <PackageArt />
-          <span className="visual-label">
-            <Icon name="book" size={16} /> Один процесс. Всё по шагам.
-          </span>
-        </div>
-      </section>
-      {session.demo_mode && (
-        <div className="demo-note">
-          <span className="small-dot" />
-          <span>Локальное пространство · опыт вашей команды</span>
-        </div>
-      )}
+      <div
+        className="recipe-collection-switch"
+        role="group"
+        aria-label="Раздел книги"
+      >
+        {(
+          [
+            [false, "Рецепты"],
+            [true, "Архив инструкций"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            type="button"
+            key={label}
+            aria-pressed={archive === value}
+            onClick={() => {
+              if (archive === value) return;
+              setArchive(value);
+              setQuery("");
+              setStatus("");
+              setLanguage("");
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="library-toolbar">
         <div className="search-field">
           <Icon name="search" />
           <input
             type="search"
-            aria-label="Найти инструкцию"
-            placeholder="Найти инструкцию или рабочий шаг"
+            aria-label={archive ? "Найти инструкцию" : "Найти рецепт"}
+            placeholder={
+              archive
+                ? "Название или текст инструкции"
+                : "Название блюда или ингредиент"
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -178,7 +185,7 @@ export function Library({
           )}
         </div>
         <label className="select-filter">
-          <span className="sr-only">Язык инструкции</span>
+          <span className="sr-only">Язык</span>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
@@ -190,26 +197,25 @@ export function Library({
           </select>
         </label>
       </div>
-      <div className="tabs" aria-label="Статус инструкций">
-        {(reader
-          ? [["", "Все инструкции"]]
-          : [
-              ["", "Все инструкции"],
-              ["published", "Опубликованные"],
-              ["draft", "Черновики"],
-              ["in_review", "На проверке"],
-            ]
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            className={status === value ? "active" : ""}
-            aria-pressed={status === value}
-            onClick={() => setStatus(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {!reader && (
+        <div className="tabs" role="group" aria-label="Статус публикации">
+          {[
+            ["", archive ? "Все материалы" : "Все рецепты"],
+            ["published", "Опубликованные"],
+            ["draft", "Черновики"],
+            ["in_review", "На проверке"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              className={status === value ? "active" : ""}
+              aria-pressed={status === value}
+              onClick={() => setStatus(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {error ? (
         <ErrorBanner error={error}>
           <button
@@ -220,19 +226,29 @@ export function Library({
           </button>
         </ErrorBanner>
       ) : loading ? (
-        <Loading label="Загружаем инструкции…" />
+        <Loading
+          label={archive ? "Загружаем материалы…" : "Загружаем рецепты…"}
+        />
       ) : items.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">
             <Icon name={query ? "search" : "book"} size={30} />
           </div>
-          <h2>{query ? "Ничего не нашлось" : "Здесь появятся инструкции"}</h2>
+          <h2>
+            {query || status || language
+              ? "Ничего не нашлось"
+              : archive
+                ? "Архив пуст"
+                : "Пока нет рецептов"}
+          </h2>
           <p>
-            {query
-              ? `По запросу «${query}» нет подходящих инструкций. Попробуйте другое слово.`
-              : reader
-                ? "После проверки мастером инструкции будут доступны вашей команде."
-                : "Создайте первую инструкцию и разметьте рабочий процесс по шагам."}
+            {query || status || language
+              ? "Измените запрос или сбросьте фильтры."
+              : archive
+                ? "Прежние инструкции будут доступны в этом разделе."
+                : reader
+                  ? "Здесь появятся рецепты, которые опубликует ваша кухня."
+                  : "Начните с первого блюда. Ингредиенты и фотографии сможете добавить в редакторе."}
           </p>
           {query || status || language ? (
             <button
@@ -246,13 +262,14 @@ export function Library({
               Сбросить фильтры
             </button>
           ) : (
-            !reader && (
+            !reader &&
+            !archive && (
               <button
                 className="button primary"
                 onClick={() => navigate(libraryPath(org.id) + "/new")}
               >
                 <Icon name="plus" />
-                Создать инструкцию
+                Создать рецепт
               </button>
             )
           )}
@@ -262,16 +279,17 @@ export function Library({
           <div className="results-line">
             <span>
               {items.length}{" "}
-              {countNoun(items.length, [
-                "инструкция",
-                "инструкции",
-                "инструкций",
-              ])}
+              {countNoun(
+                items.length,
+                archive
+                  ? ["материал", "материала", "материалов"]
+                  : ["рецепт", "рецепта", "рецептов"],
+              )}
             </span>
             <span>Последние изменения</span>
           </div>
           <div className="instruction-grid">
-            {items.map((item, i) => (
+            {items.map((item) => (
               <article className="instruction-card" key={item.id}>
                 <button
                   className="card-open"
@@ -296,12 +314,17 @@ export function Library({
                         loading="lazy"
                       />
                     ) : (
-                      <PackageArt variant={i} />
+                      <RecipeCover legacy={archive} />
                     )}
-                    <span className="card-duration">
-                      <Icon name="play" size={12} />
-                      {item.duration_ms ? time(item.duration_ms) : "Без видео"}
-                    </span>
+                    {item.duration_ms != null && (
+                      <span
+                        className="card-duration"
+                        aria-label={`Длительность видео ${time(item.duration_ms)}`}
+                      >
+                        <Icon name="play" size={12} />
+                        {time(item.duration_ms)}
+                      </span>
+                    )}
                     {item.source_is_demo && (
                       <span className="card-source">Учебный материал</span>
                     )}
@@ -316,6 +339,16 @@ export function Library({
                         {item.step_count}{" "}
                         {countNoun(item.step_count, ["шаг", "шага", "шагов"])}
                       </span>
+                      {!archive && item.servings != null && (
+                        <span>
+                          {item.servings}{" "}
+                          {countNoun(item.servings, [
+                            "порция",
+                            "порции",
+                            "порций",
+                          ])}
+                        </span>
+                      )}
                       <span>{languageName(item.language)}</span>
                     </div>
                     <div className="card-footer">
@@ -346,28 +379,22 @@ export function Library({
           )}
         </>
       )}
-      <footer className="workspace-footer">
-        <span>Хорошая инструкция начинается с опыта.</span>
-        <span>Опыт мастера · 2026</span>
-      </footer>
     </>
   );
 }
-export function NewInstruction({
+export function NewRecipe({
   org,
-  session,
   navigate,
   setDirtyGuard,
 }: {
   org: Organization;
-  session: Session;
   navigate: Navigate;
   setDirtyGuard: (dirty: boolean) => void;
 }) {
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
   const [language, setLanguage] = useState<Language>("ru");
-  const [sourceMode, setSourceMode] = useState<"real" | "demo" | "camera">(
+  const [sourceMode, setSourceMode] = useState<"real" | "manual" | "camera">(
     "real",
   );
   const [file, setFile] = useState<File | null>(null);
@@ -379,10 +406,16 @@ export function NewInstruction({
   const creating = useRef(false);
   const upload = useVideoUpload(org.id);
   const locked = busy || upload.sending;
+  const unsaved =
+    locked ||
+    (!created &&
+      Boolean(
+        title || purpose || file || language !== "ru" || sourceMode !== "real",
+      ));
   useEffect(() => {
-    setDirtyGuard(locked);
+    setDirtyGuard(unsaved);
     const prevent = (event: BeforeUnloadEvent) => {
-      if (locked) {
+      if (unsaved) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -392,7 +425,7 @@ export function NewInstruction({
       setDirtyGuard(false);
       window.removeEventListener("beforeunload", prevent);
     };
-  }, [locked, setDirtyGuard]);
+  }, [unsaved, setDirtyGuard]);
   function openEditor(wc: WorkingCopy) {
     setDirtyGuard(false);
     navigate(
@@ -404,6 +437,12 @@ export function NewInstruction({
     event.preventDefault();
     if (creating.current || (sourceMode === "real" && (!file || !rights)))
       return;
+    if (title.trim().length < 3 || purpose.trim().length < 10) {
+      setError(
+        "Введите название от 3 символов и описание от 10 символов без пробелов по краям.",
+      );
+      return;
+    }
     creating.current = true;
     setBusy(true);
     setError("");
@@ -416,13 +455,13 @@ export function NewInstruction({
             title: title.trim(),
             purpose: purpose.trim(),
             language,
-            ...(sourceMode === "demo" ? { demo_source: true } : {}),
+            recipe: { ingredients: [], servings: null },
           },
           key: key.current,
         }));
       setCreated(wc);
       if (
-        sourceMode === "demo" ||
+        sourceMode === "manual" ||
         sourceMode === "camera" ||
         (file &&
           (await upload.start(
@@ -446,24 +485,21 @@ export function NewInstruction({
         onClick={() => navigate(libraryPath(org.id))}
       >
         <Icon name="back" size={17} />
-        Библиотека
+        Книга рецептов
       </button>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Новая инструкция</span>
-          <h1>С чего начнём?</h1>
+          <h1>Новый рецепт</h1>
           <p className="muted">
-            Один рабочий процесс — одна понятная инструкция.
+            Назовите блюдо и выберите, как добавить запись приготовления.
           </p>
         </div>
       </div>
       <div className="create-layout">
         <form className="form-panel stack" onSubmit={create}>
           <label>
-            Название процесса
-            <span className="field-hint">
-              Например, «Комплектация учебного набора»
-            </span>
+            Название блюда
+            <span className="field-hint">Например, «Домашняя лапша»</span>
             <input
               value={title}
               onChange={(e) => {
@@ -478,9 +514,10 @@ export function NewInstruction({
             />
           </label>
           <label>
-            Что должно получиться
+            Описание блюда
             <span className="field-hint">
-              Опишите результат работы. От 10 до 600 символов.
+              Что приготовим и каким должно получиться блюдо? От 10 до 600
+              символов.
             </span>
             <textarea
               value={purpose}
@@ -496,7 +533,7 @@ export function NewInstruction({
             />
           </label>
           <label>
-            Язык инструкции
+            Язык рецепта
             <select
               value={language}
               onChange={(e) => {
@@ -511,7 +548,7 @@ export function NewInstruction({
             </select>
           </label>
           <fieldset className="source-mode" disabled={locked || !!created}>
-            <legend>Источник видео</legend>
+            <legend>Видео приготовления</legend>
             <label className="checkbox-label">
               <input
                 type="radio"
@@ -534,22 +571,20 @@ export function NewInstruction({
                   key.current = requestKey();
                 }}
               />
-              <span>Камера · записать процесс</span>
+              <span>Записать на камеру</span>
             </label>
-            {session.demo_mode && (
-              <label className="checkbox-label">
-                <input
-                  type="radio"
-                  name="source-mode"
-                  checked={sourceMode === "demo"}
-                  onChange={() => {
-                    setSourceMode("demo");
-                    key.current = requestKey();
-                  }}
-                />
-                <span>Учебный пример без речи</span>
-              </label>
-            )}
+            <label className="checkbox-label">
+              <input
+                type="radio"
+                name="source-mode"
+                checked={sourceMode === "manual"}
+                onChange={() => {
+                  setSourceMode("manual");
+                  key.current = requestKey();
+                }}
+              />
+              <span>Добавить видео позже</span>
+            </label>
           </fieldset>
           {sourceMode === "real" ? (
             <VideoFileFields
@@ -563,7 +598,7 @@ export function NewInstruction({
             <div className="source-choice">
               <Icon name="eye" />
               <div>
-                <strong>Снимите процесс прямо здесь</strong>
+                <strong>Запишите приготовление</strong>
                 <p>
                   На следующем экране вы сможете включить камеру, записать видео
                   и отдельно разрешить ИИ наблюдать за действиями. Сейчас камера
@@ -575,10 +610,10 @@ export function NewInstruction({
             <div className="source-choice">
               <Icon name="play" />
               <div>
-                <strong>Учебное видео комплектации</strong>
+                <strong>Начните с ингредиентов</strong>
                 <p>
-                  Синтетическая запись для ручной разметки и проверки. В ней нет
-                  речи для распознавания.
+                  Черновик откроется в редакторе. Видеозапись можно загрузить,
+                  когда будете готовы показать приготовление.
                 </p>
               </div>
             </div>
@@ -602,8 +637,8 @@ export function NewInstruction({
                 ? "Создаём…"
                 : sourceMode === "camera"
                   ? "Создать и перейти к камере"
-                  : sourceMode === "demo"
-                    ? "Перейти к шагам"
+                  : sourceMode === "manual"
+                    ? "Создать черновик"
                     : created
                       ? "Повторить загрузку"
                       : "Создать и загрузить видео"}
@@ -621,37 +656,30 @@ export function NewInstruction({
           )}
         </form>
         <aside className="create-aside">
-          <span className="eyebrow">Как это работает</span>
-          <ol>
+          <h2>Что пригодится для рецепта</h2>
+          <ul className="recipe-create-tips">
             <li>
-              <span>01</span>
-              <div>
-                <h3>Загрузите запись</h3>
-                <p>Снимите рабочий процесс и поясняйте действия вслух.</p>
-              </div>
+              <strong>Ингредиенты и порции</strong>
+              <p>
+                Запишите, сколько продуктов понадобилось и на сколько человек
+                рассчитано блюдо.
+              </p>
             </li>
             <li>
-              <span>02</span>
-              <div>
-                <h3>Составьте шаги</h3>
-                <p>
-                  Распознайте действия по кадрам, используйте расшифровку речи
-                  или разметьте запись вручную.
-                </p>
-              </div>
+              <strong>Движения крупным планом</strong>
+              <p>
+                Покажите, как складываете тесто, нарезаете овощи или проверяете
+                готовность. По этим кадрам будут учиться.
+              </p>
             </li>
             <li>
-              <span>03</span>
-              <div>
-                <h3>Передайте на проверку</h3>
-                <p>Мастер сверит шаги с видео перед публикацией.</p>
-              </div>
+              <strong>Уточнения повара</strong>
+              <p>
+                Время, огонь и температуру укажите в шагах, если они важны для
+                результата.
+              </p>
             </li>
-          </ol>
-          <p className="muted small">
-            ИИ предлагает текст отдельно. Вы решаете, применять ли его к
-            инструкции.
-          </p>
+          </ul>
         </aside>
       </div>
     </>

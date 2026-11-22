@@ -140,6 +140,8 @@ def draft_job(job, context):
     if not segments or len(segments) > 300 or sum(len(s['text']) for s in segments) > 18000:
         raise ProcessingFailure('TRANSCRIPT_SIZE_LIMIT', 'Размер расшифровки не подходит для автоматического создания шагов.')
     request = {'schema_version': '1', 'language': working.language, 'duration_ms': transcript.duration_ms, 'transcript_id': str(transcript.id), 'transcript_revision': transcript.revision, 'segments': [{key: segment[key] for key in ('id', 'ordinal', 'start_ms', 'end_ms', 'text')} for segment in segments]}
+    if working.recipe is not None:
+        request['task'] = 'recipe'
     context.stage('generating_steps')
     try:
         from ai_budget.services import execute_budgeted_call

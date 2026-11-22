@@ -94,6 +94,7 @@ def provider_for_job(job, session, *, images=None):
     provider.protocol = protocol_for_job(job, session)
     if session.analysis_budget.get('semantic_review') == PAIR_REVIEW_VERSION and not is_free_profile(provider.provider, provider.model):
         raise ProcessingFailure('AI_FREE_MODEL_REQUIRED', 'Для проверки действий нужна бесплатная модель OpenRouter.')
+    provider.culinary_guidance = session.analysis_budget.get('culinary_guidance') == 'v1'
     provider.short_action_coverage = session.analysis_budget.get('short_action_coverage')
     provider.frame_grounding = session.analysis_budget.get('frame_grounding')
     provider.demonstration_wire = session.analysis_budget.get('demonstration_wire')

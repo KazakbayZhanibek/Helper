@@ -36,7 +36,15 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_AGE = 43200
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173').split(',')
+_LOCAL_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173'
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv('CSRF_TRUSTED_ORIGINS', _LOCAL_ORIGINS if DEBUG else '').split(',') if origin.strip()]
+if not DEBUG:
+    MIDDLEWARE.append('django.middleware.clickjacking.XFrameOptionsMiddleware')
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000
+    # Only enable when the reverse proxy replaces the header and the API is private.
+    if os.getenv('DJANGO_TRUST_HTTPS_PROXY') == '1':
+        SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_FAILURE_VIEW = 'core.http.csrf_failure'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 262144
 REST_FRAMEWORK = {'DEFAULT_AUTHENTICATION_CLASSES': ['core.http.SessionAuthentication'], 'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'], 'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'], 'EXCEPTION_HANDLER': 'core.http.exception_handler', 'DEFAULT_PARSER_CLASSES': ['rest_framework.parsers.JSONParser']}

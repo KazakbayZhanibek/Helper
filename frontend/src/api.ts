@@ -78,7 +78,7 @@ export async function api<T>(
 export const orgApi = (id: string) => `/orgs/${id}`;
 export const instructionApi = (org: string, id: string) =>
   `${orgApi(org)}/instructions/${id}`;
-export const libraryPath = (org: string) => `/o/${org}/instructions`;
+export const libraryPath = (org: string) => `/o/${org}/recipes`;
 export const instructionPath = (org: string, id: string) =>
   `${libraryPath(org)}/${id}`;
 export const requestKey = () => crypto.randomUUID();

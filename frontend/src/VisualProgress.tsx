@@ -32,7 +32,7 @@ export function VisualProgress({
         подробный пересмотр: {analysis.refinements_completed} /{" "}
         {analysis.refinement_windows} фрагментов.
         {analysis.coverage_complete &&
-          " Просмотр по кадрам завершён; полноту действий проверяет мастер."}
+          " Просмотр по кадрам завершён; полноту действий проверяет автор рецепта."}
       </p>
       {budget && (
         <p className="field-hint">
