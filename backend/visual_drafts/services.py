@@ -224,6 +224,8 @@ def session_data(session):
 
 @transaction.atomic
 def start_live(member, instruction_id, data, supplied):
+    from customer_accounts.services import require_verified_email
+    require_verified_email(member.user)
     s.allowed_fields(data, {'consent_images'})
     require_consent(data)
     Organization.objects.select_for_update().get(pk=member.organization_id)
@@ -341,6 +343,8 @@ def _check_frame_receipt(session, sequence, timestamp_ms, key, digest):
 
 @transaction.atomic
 def analyze_live(member, session_id, data):
+    from customer_accounts.services import require_verified_email
+    require_verified_email(member.user)
     s.allowed_fields(data, set())
     Organization.objects.select_for_update().get(pk=member.organization_id)
     session = session_for(member, session_id, lock=True, owner=True)
@@ -365,6 +369,8 @@ def analyze_live(member, session_id, data):
 
 @transaction.atomic
 def request_uploaded(member, instruction_id, data, supplied):
+    from customer_accounts.services import require_verified_email
+    require_verified_email(member.user)
     from ai_budget.services import budget_capabilities, preflight
     s.allowed_fields(data, {'consent_images', 'start_ms', 'end_ms', 'scope', 'max_ai_calls', 'max_cost_microusd'})
     require_consent(data)
@@ -537,4 +543,4 @@ def apply_proposal(member, instruction_id, proposal_id, data, supplied):
     proposal.applied_at, proposal.applied_by = timezone.now(), member.user
     proposal.save(update_fields=['applied_at', 'applied_by', 'updated_at'])
     s.audit(member, 'visual_proposal.applied', proposal)
-    return s.working_data(working), 200
+    return s.working_data(working, member), 200

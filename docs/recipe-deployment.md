@@ -1,6 +1,6 @@
 # Публикация «Рецептов мастера»
 
-Комплект рассчитан на один сервер с Docker Engine, Docker Compose v2 и постоянным диском. Caddy принимает запросы на 80 и 443, получает сертификат для домена, отдаёт сайт и передаёт запросы API в Gunicorn. PostgreSQL хранит рецепты, проверенные шаги, учётные записи и очередь. Один обработчик разбирает видео через FFmpeg. Исходники и фотографии лежат в отдельном закрытом томе.
+Комплект рассчитан на сервер с Docker Engine, Docker Compose v2 и постоянным диском. Caddy обслуживает HTTPS, PostgreSQL хранит рецепты, подписки и учётные записи. Сервис `worker` обрабатывает видео, а `mail` доставляет письма регистрации, приглашений и восстановления пароля. Видео и фотографии хранятся в закрытом томе.
 
 ## Сервер и первый запуск
 
@@ -22,7 +22,21 @@
 )
 ```
 
-3. Запустите сервисы. Миграции выполнятся отдельным контейнером до запуска API и обработчика.
+3. Для регистрации клиентов подключите почтовый ящик или транзакционный SMTP-сервис. Оператор SMTP выдаёт адрес сервера, порт, имя пользователя и пароль. Подтвердите домен отправителя у почтового провайдера. Запишите фактические значения в закрытый `.env.production`. Для STARTTLS обычно используется следующий вариант.
+
+```dotenv
+RECIPE_EMAIL_FROM=recipes@example.org
+RECIPE_SMTP_HOST=smtp.example.org
+RECIPE_SMTP_PORT=587
+RECIPE_SMTP_USER=recipes@example.org
+RECIPE_SMTP_PASSWORD=
+RECIPE_SMTP_TLS=1
+RECIPE_SMTP_SSL=0
+```
+
+   Заполните `RECIPE_SMTP_PASSWORD` выданным паролем. Если провайдер использует TLS сразу при соединении на порту 465, задайте `RECIPE_SMTP_PORT=465`, `RECIPE_SMTP_SSL=1` и `RECIPE_SMTP_TLS=0`. Ссылки в письмах ведут на HTTPS-домен из `RECIPE_HOST`.
+
+4. Запустите сервисы. Миграции выполнятся отдельным контейнером до запуска приложения.
 
 ```sh
 docker compose --env-file .env.production config --quiet
@@ -30,24 +44,30 @@ docker compose --env-file .env.production up --build -d
 docker compose --env-file .env.production ps -a
 ```
 
-4. Создайте кухню и её администратора. Команда запросит пароль в терминале и выведет идентификатор кухни. Для следующих участников используйте этот идентификатор и одну из ролей `author`, `reviewer`, `reader`, `admin`.
+5. Откройте `https://ваш-домен/register` и зарегистрируйтесь с почтовым ящиком, который можете проверить. Подтвердите адрес из письма, пригласите второго пользователя через «Команда» и примите приглашение в другой сессии браузера. Пройдите `/forgot-password` и войдите с новым паролем. Владелец кухни управляет своей командой и подпиской.
+
+6. Для сотрудника, который обслуживает весь сервис, создайте отдельную операторскую учётную запись в консоли сервера.
 
 ```sh
-docker compose --env-file .env.production exec api python manage.py kitchen_member --new-kitchen "Моя кухня" --email chef@example.org --name "Повар" --role admin
-docker compose --env-file .env.production exec api python manage.py kitchen_member --kitchen-id UUID --email cook@example.org --name "Автор" --role author
+docker compose --env-file .env.production exec api python manage.py createsuperuser
 ```
 
-5. Откройте `https://ваш-домен/login`, войдите, создайте рецепт, загрузите короткое видео и дождитесь превью. После проверки и публикации откройте рецепт с ролью читателя. Для диагностики доступны `/api/v1/health/live` и журналы `docker compose --env-file .env.production logs --tail=80 api worker web`.
+   Django запросит email, имя и пароль. После входа откройте `/customers` для поиска клиентских кухонь по названию или email администратора. Привилегия суперпользователя даёт доступ ко всему списку клиентов.
+
+7. Создайте рецепт под владельцем кухни, загрузите короткое видео и дождитесь превью. После публикации откройте рецепт под читателем. Для диагностики доступны `/api/v1/health/live` и журналы `docker compose --env-file .env.production logs --tail=80 api mail worker web`. При временном сбое SMTP задача остаётся в базе для повторной отправки с увеличивающимся интервалом. После исправления долгого сбоя пользователь может запросить новое письмо.
+
+## Подписки
+
+Каждая новая кухня получает тариф «Старт». Для приёма оплаты создайте подписочный продукт в Dodo Payments, подключите подписанный webhook и пройдите оформление в тестовом режиме. В `.env.production` используются переменные `RECIPE_DODO_MODE`, `RECIPE_DODO_BUSINESS_ID`, `RECIPE_DODO_PRODUCT_ID`, `RECIPE_DODO_API_KEY` и `RECIPE_DODO_WEBHOOK_SECRET`. После изменения конфигурации выполните `docker compose --env-file .env.production up -d`. Пошаговая процедура настройки и перехода на реальные платежи описана в [руководстве по подпискам](customer-billing.md).
 
 Перед публикацией реальных материалов проверьте восстановление ваших данных по процедуре ниже и убедитесь, что ежедневное резервное копирование настроено на вашем сервере.
 
 ## Обработка и расходы
 
-При первом старте доступны ручная подготовка, загрузка, камера, обработка видео, проверка и публикация. Внешний ИИ включается отдельно. Чтобы разрешить распознавание кадров, добавьте в закрытый файл `.env.production` строки `RECIPE_EXTERNAL_AI=1` и `RECIPE_OPENROUTER_KEY=ваш_ключ`. Затем пересоздайте приложение и разрешите внешний анализ выбранной кухне.
+При первом старте доступны ручная подготовка, загрузка, камера, обработка видео, проверка и публикация. Чтобы предложить бесплатное распознавание кадров, добавьте в закрытый файл `.env.production` строки `RECIPE_EXTERNAL_AI=1` и `RECIPE_OPENROUTER_KEY=ваш_ключ`. Затем пересоздайте приложение. Администратор кухни с подтверждённой почтой может разрешить внешний анализ в интерфейсе кухни.
 
 ```sh
 docker compose --env-file .env.production up -d
-docker compose --env-file .env.production exec api python manage.py configure_ai --organization UUID --allow-external
 ```
 
 Образ использует профиль `openrouter/free`, предел расходов на платные модели равен нулю. Для анализа по-прежнему требуется согласие автора на отправку кадров. При исчерпании бесплатной квоты автор может продолжить ручную разметку. Распознавание речи через whisper.cpp требует отдельно смонтированной локальной модели и исполняемого файла. Ключ и пароль кухни относятся к разным системам.
@@ -60,7 +80,7 @@ docker compose --env-file .env.production exec api python manage.py configure_ai
 umask 077
 backup_dir="../recipe-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir "$backup_dir"
-docker compose --env-file .env.production stop web worker api
+docker compose --env-file .env.production stop web mail worker api
 docker compose --env-file .env.production exec -T db pg_dump -U recipes -d recipes --format=custom > "$backup_dir/recipes.dump"
 docker compose --env-file .env.production run --rm --no-deps -T api tar -C /var/lib/kitchen/media -czf - . > "$backup_dir/media.tgz"
 docker compose --env-file .env.production up -d
@@ -78,4 +98,4 @@ docker compose --env-file .env.production up -d
 
 HTTPS обеспечивается Caddy, а порт API доступен внутри сети контейнеров. Параметр Django `DJANGO_TRUST_HTTPS_PROXY=1` предполагает, что только доверенный прокси может передать заголовок исходной схемы запроса. При изменении топологии сохраните это ограничение. [HTTPS и прокси в Django](https://docs.djangoproject.com/en/5.2/ref/settings/#secure-proxy-ssl-header) · [Заголовки reverse_proxy в Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers)
 
-Проверка в GitHub Actions собирает оба образа, запускает PostgreSQL, миграции, API, обработчик и Caddy, проверяет локальный сертификат, перенаправление с HTTP, прямую ссылку на форму рецепта, CSRF-cookie, закрытые медиа и готовность очереди.
+В GitHub Actions собираются оба образа и запускается серверный комплект. Проверка проходит регистрацию двух клиентов через HTTPS, подтверждает адрес по письму от отдельного обработчика, сверяет бесплатный тариф, принимает приглашение и отзывает доступ. Одновременно проверяются CSRF-cookie, выдача медиа и изоляция кухонь. Письма этого прогона остаются в тестовом контейнере.

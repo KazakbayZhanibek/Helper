@@ -1,4 +1,5 @@
 import { CameraCapture } from "./CameraCapture";
+import { DeleteRecipeDraft } from "./DeleteRecipeDraft";
 import { VisualAnalysis } from "./VisualAnalysis";
 import { RecipeStepPhotos } from "./RecipeStepPhotos";
 import { TeachingClip } from "./TeachingClip";
@@ -43,9 +44,9 @@ function validation(form: Draft): string[] {
   const errors: string[] = [];
   if (form.title.trim().length < 3)
     errors.push("Название должно содержать не менее 3 символов.");
-  if (form.purpose.trim().length < 10)
-    errors.push("Опишите результат хотя бы в 10 символах.");
   const recipe = recipeFromInputs(form);
+  if (!recipe && form.purpose.trim().length < 10)
+    errors.push("Опишите результат хотя бы в 10 символах.");
   if (recipe) {
     if (recipe.ingredients.length > 30)
       errors.push("Добавьте не больше 30 ингредиентов.");
@@ -416,7 +417,7 @@ export function Editor({
               ? "Сохраняем…"
               : dirty
                 ? "Есть несохранённые изменения"
-                : savedNotice || `Сохранено · ревизия ${form.revision}`}
+                : savedNotice || "Все изменения сохранены"}
           </span>
         </div>
         <div className="button-row">
@@ -518,27 +519,24 @@ export function Editor({
           </div>
         </div>
       )}
+      <nav className="editor-jumps" aria-label="К разделу рецепта">
+        <a href="#recipe-details">Карточка блюда</a>
+        <a href="#recipe-video">Видео</a>
+        <a href="#recipe-steps">Шаги ({form.steps.length})</a>
+      </nav>
       <div className="editor-grid">
-        <aside className="editor-source">
-          {!(cameraOpen && !form.source) && (
-            <Video source={form.source} videoRef={video} />
-          )}
+        <aside className="editor-source" id="recipe-video">
+          {form.source && <Video source={form.source} videoRef={video} />}
           <div className="source-meta">
             <span>
               <Icon name="play" size={16} />
-              Исходная запись
+              Видео приготовления
             </span>
-            <span>
-              {form.source ? time(form.source.duration_ms) : "Нет видео"}
-            </span>
+            <span>{form.source ? time(form.source.duration_ms) : ""}</span>
           </div>
-          <p className="source-caption">
-            {form.source?.is_demo
-              ? "Учебная видеозапись"
-              : form.source
-                ? "Ваша исходная запись · доступна участникам пространства"
-                : "Видео пока не добавлено"}
-          </p>
+          {form.source?.is_demo && (
+            <p className="source-caption">Учебная видеозапись</p>
+          )}
           {form.source?.status === "rejected" && editable && (
             <div className="notice warning">
               <div>
@@ -593,50 +591,49 @@ export function Editor({
               }}
             />
           )}
-          <div className="editor-tip">
-            <Icon name="info" />
-            <p>
-              {recipe
-                ? "Привяжите каждый этап приготовления к моменту на видео. Укажите, как повторить движение и по чему понять, что пора переходить дальше."
-                : "Привяжите каждое действие к фрагменту видео. Время можно взять из проигрывателя."}
-            </p>
-          </div>
           {form.source?.status === "ready" && (
-            <VisualAnalysis
+            <details className="editor-tool">
+              <summary>Составить шаги по видео с ИИ</summary>
+              <VisualAnalysis
+                orgId={org.id}
+                base={base}
+                working={form}
+                dirty={dirty}
+                disabled={locked || conflict}
+                prepare={prepareAi}
+                onApplied={accept}
+                onBusy={setPipelineBusy}
+                onConflict={(e) => {
+                  if (e.status === 412) setConflict(true);
+                  setError(e.message);
+                }}
+                onJump={jump}
+              />
+            </details>
+          )}
+          <details className="editor-tool" hidden={!form.source}>
+            <summary>Обработка видео и расшифровка</summary>
+            <ProcessingPanel
               orgId={org.id}
               base={base}
               working={form}
               dirty={dirty}
               disabled={locked || conflict}
+              refreshSeed={refreshSeed}
               prepare={prepareAi}
               onApplied={accept}
               onBusy={setPipelineBusy}
+              onRefresh={refreshSource}
               onConflict={(e) => {
                 if (e.status === 412) setConflict(true);
                 setError(e.message);
               }}
               onJump={jump}
             />
-          )}
-          <ProcessingPanel
-            orgId={org.id}
-            base={base}
-            working={form}
-            dirty={dirty}
-            disabled={locked || conflict}
-            refreshSeed={refreshSeed}
-            prepare={prepareAi}
-            onApplied={accept}
-            onBusy={setPipelineBusy}
-            onRefresh={refreshSource}
-            onConflict={(e) => {
-              if (e.status === 412) setConflict(true);
-              setError(e.message);
-            }}
-            onJump={jump}
-          />
+          </details>
         </aside>
         <section
+          id="recipe-details"
           className="editor-content"
           aria-label={recipe ? "Содержание рецепта" : "Содержание материала"}
         >
@@ -651,12 +648,12 @@ export function Editor({
               />
             </label>
             <label>
-              {recipe ? "Что получится" : "Результат работы"}
+              {recipe ? "Описание блюда · необязательно" : "Результат работы"}
               <textarea
                 rows={2}
                 value={form.purpose}
                 onChange={(e) => setForm({ ...form, purpose: e.target.value })}
-                minLength={10}
+                minLength={recipe ? 0 : 10}
                 maxLength={600}
               />
             </label>
@@ -709,7 +706,7 @@ export function Editor({
               </button>
             )
           )}
-          <div className="section-heading">
+          <div className="section-heading" id="recipe-steps">
             <h2>
               {recipe ? "Приготовление" : "Шаги"}{" "}
               <span>{form.steps.length}</span>
@@ -1014,6 +1011,16 @@ export function Editor({
           )}
         </section>
       </div>
+      {form.can_delete_draft && (
+        <DeleteRecipeDraft
+          orgId={org.id}
+          instructionId={id}
+          title={form.title}
+          etag={form.etag}
+          disabled={locked || dirty || conflict}
+          onDeleted={() => navigate(libraryPath(org.id))}
+        />
+      )}
       {deleteIndex !== null && (
         <Dialog title="Удалить шаг?" onClose={() => setDeleteIndex(null)}>
           <p>

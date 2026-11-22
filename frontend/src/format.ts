@@ -48,3 +48,18 @@ export function countNoun(
   if (last >= 2 && last <= 4) return forms[1];
   return forms[2];
 }
+
+export const subscriptionStatus: Record<string, string> = {
+  free: "Бесплатный тариф",
+  active: "Подписка действует",
+  trialing: "Пробный период",
+  pending: "Ожидает оплаты",
+  on_hold: "Требуется обновить оплату",
+  past_due: "Требуется обновить оплату",
+  paused: "Подписка приостановлена",
+  cancelled: "Продление отключено",
+  canceled: "Продление отключено",
+  expired: "Период подписки завершён",
+  failed: "Оплата не прошла",
+  other_product: "Другой тариф в платёжном кабинете",
+};

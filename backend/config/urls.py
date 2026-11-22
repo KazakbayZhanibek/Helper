@@ -2,6 +2,9 @@ from django.urls import include, path, re_path
 from core import views
 
 urlpatterns = [
+    path('api/v1/', include('customer_accounts.urls')),
+    path('api/v1/', include('billing.urls')),
+    path('api/v1/', include('core.customer_operations_urls')),
     path('api/v1/auth/csrf', views.CsrfView.as_view()),
     path('api/v1/auth/login', views.LoginView.as_view()),
     path('api/v1/auth/me', views.MeView.as_view()),

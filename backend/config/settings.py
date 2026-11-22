@@ -12,7 +12,7 @@ if not SECRET_KEY:
         raise ImproperlyConfigured('DJANGO_SECRET_KEY is required outside local development')
     SECRET_KEY = 'local-development-only-do-not-deploy-master-experience'
 ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
-INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'rest_framework', 'core', 'media_pipeline', 'ai_drafts', 'visual_drafts', 'ai_budget']
+INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'rest_framework', 'core', 'media_pipeline', 'ai_drafts', 'visual_drafts', 'ai_budget', 'customer_accounts', 'billing']
 MIDDLEWARE = ['core.http.RequestIdMiddleware', 'django.middleware.security.SecurityMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'django.middleware.csrf.CsrfViewMiddleware', 'django.contrib.auth.middleware.AuthenticationMiddleware']
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -38,6 +38,28 @@ CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = 'Lax'
 _LOCAL_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173'
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv('CSRF_TRUSTED_ORIGINS', _LOCAL_ORIGINS if DEBUG else '').split(',') if origin.strip()]
+# Mail and checkout links use an operator-controlled origin, never an incoming Host.
+APP_PUBLIC_URL = os.getenv('APP_PUBLIC_URL', 'http://127.0.0.1:4173' if DEBUG else '').rstrip('/')
+PUBLIC_APP_URL = APP_PUBLIC_URL
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'recipes@localhost')
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND') or (
+    'django.core.mail.backends.filebased.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'
+)
+EMAIL_FILE_PATH = os.getenv('EMAIL_FILE_PATH') or str(BASE_DIR / 'local-mail')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', '1') == '1'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', '0') == '1'
+EMAIL_TIMEOUT = 8
+ACCOUNT_MAIL_IN_MEDIA_WORKER = os.getenv('ACCOUNT_MAIL_IN_MEDIA_WORKER', '1') == '1'
+PASSWORD_RESET_TIMEOUT = 3600
+DODO_MODE = os.getenv('DODO_MODE', 'test')
+DODO_API_KEY = os.getenv('DODO_API_KEY', '')
+DODO_WEBHOOK_SECRET = os.getenv('DODO_WEBHOOK_SECRET', '')
+DODO_PRODUCT_ID = os.getenv('DODO_PRODUCT_ID', '')
+DODO_BUSINESS_ID = os.getenv('DODO_BUSINESS_ID', '')
 if not DEBUG:
     MIDDLEWARE.append('django.middleware.clickjacking.XFrameOptionsMiddleware')
     SECURE_SSL_REDIRECT = True

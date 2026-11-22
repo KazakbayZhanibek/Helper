@@ -1,7 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { api, ApiError, libraryPath } from "./api";
 import { Auth, RenewSession } from "./Auth";
 import { Library, NewRecipe } from "./Library";
+import { KitchenTeam } from "./KitchenTeam";
+import { KitchenBilling } from "./KitchenBilling";
+import { VerifyEmailNotice } from "./AccountFeedback";
+import { CustomerList, KitchenAISettings } from "./KitchenSettings";
 import { Editor } from "./Editor";
 import { Reader } from "./Reader";
 import { Home } from "./Home";
@@ -9,6 +19,7 @@ import { ExampleRecipe } from "./ExampleRecipe";
 import { Brand, ErrorBanner, Icon, Loading } from "./components";
 import type { Session } from "./types";
 import "./recipe-shell.css";
+import "./product.css";
 const roleName = {
   admin: "Администратор",
   author: "Автор рецептов",
@@ -40,6 +51,18 @@ export default function App() {
     setPath(new URL(next, location.origin).pathname);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
+  function followLink(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.button ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    navigate(event.currentTarget.pathname);
+  }
   useEffect(() => {
     const pop = () => {
       if (
@@ -72,17 +95,47 @@ export default function App() {
   useEffect(() => {
     if (!example) void check();
   }, [check, example]);
+  const awaitingVerification = session?.user.email_verified === false;
+  useEffect(() => {
+    if (!awaitingVerification) return;
+    const controller = new AbortController();
+    const refresh = () => {
+      api<Session>("/auth/me", { signal: controller.signal })
+        .then((updated) => {
+          if (updated.user.email_verified && !controller.signal.aborted) {
+            setSession((previous) =>
+              previous?.user.id === updated.user.id ? updated : previous,
+            );
+          }
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", refresh);
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", refresh);
+    };
+  }, [awaitingVerification]);
   useEffect(() => {
     const expire = () => setExpired(true);
     window.addEventListener("session-expired", expire);
     return () => window.removeEventListener("session-expired", expire);
   }, []);
-  function login(s: Session) {
+  function login(s: Session, organizationId?: string) {
     setSession(s);
+    setExpired(false);
+    if (organizationId) {
+      navigate(libraryPath(organizationId));
+      return;
+    }
     const next = new URLSearchParams(location.search).get("next");
     if (next?.startsWith("/o/") && !next.startsWith("//")) navigate(next);
     else if (!location.pathname.startsWith("/o/"))
-      navigate(libraryPath(s.organizations[0]?.id || ""));
+      navigate(
+        !s.organizations.length && s.user.is_operator
+          ? "/customers"
+          : libraryPath(s.organizations[0]?.id || ""),
+      );
   }
   async function logout() {
     if (
@@ -119,7 +172,14 @@ export default function App() {
       </div>
     );
   if (path === "/") return <Home session={session} navigate={navigate} />;
-  if (!session)
+  const accountRoute =
+    [
+      "/register",
+      "/forgot-password",
+      "/reset-password",
+      "/verify-email",
+    ].includes(path) || path.startsWith("/invite/");
+  if (!session || accountRoute)
     return (
       <>
         {error ? (
@@ -131,7 +191,7 @@ export default function App() {
             </ErrorBanner>
           </div>
         ) : null}
-        <Auth onLogin={login} />
+        <Auth key={path} path={path} session={session} onLogin={login} />
       </>
     );
   const parts = path.split("/").filter(Boolean);
@@ -139,6 +199,16 @@ export default function App() {
   const org =
     session.organizations.find((o) => o.id === requestedOrg) ||
     (!requestedOrg ? session.organizations[0] : undefined);
+  if (
+    (path === "/customers" || (path === "/login" && !org)) &&
+    session.user.is_operator
+  )
+    return (
+      <CustomerList
+        onBack={() => navigate(org ? libraryPath(org.id) : "/")}
+        onLogout={() => void logout()}
+      />
+    );
   if (!org)
     return (
       <main className="empty-state">
@@ -161,117 +231,126 @@ export default function App() {
     parts.length === 3 ||
     parts.length === 4 ||
     (parts.length === 5 && !isNew && isEditor);
-  const invalidRoute = path !== "/login" && (!collectionRoute || !validDetail);
+  const setting =
+    parts.length === 3 &&
+    parts[0] === "o" &&
+    ["team", "billing"].includes(parts[2])
+      ? parts[2]
+      : "";
+  const invalidRoute =
+    !setting && path !== "/login" && (!collectionRoute || !validDetail);
+  const tabs = [
+    {
+      label: "Рецепты",
+      url: libraryPath(org.id),
+      icon: "book",
+      selected: !setting,
+    },
+    ...(org.role === "admin"
+      ? [
+          {
+            label: "Команда",
+            url: `/o/${org.id}/team`,
+            icon: "people",
+            selected: setting === "team",
+          },
+          {
+            label: "Подписка",
+            url: `/o/${org.id}/billing`,
+            icon: "card",
+            selected: setting === "billing",
+          },
+        ]
+      : []),
+  ];
   return (
     <>
-      <div className="app-shell">
+      <div className="product-shell">
         <a className="skip-link" href="#main">
-          Перейти к содержимому
+          К содержимому
         </a>
-        <aside className="sidebar">
-          <button
-            className="brand-button"
-            onClick={() => navigate(libraryPath(org.id))}
-            aria-label="Рецепты мастера — книга рецептов"
-          >
-            <Brand />
-          </button>
-          {session.organizations.length > 1 ? (
-            <label className="recipe-kitchen-selector">
-              <span>Кухня</span>
-              <select
-                value={org.id}
-                onChange={(event) => navigate(libraryPath(event.target.value))}
-              >
-                {session.organizations.map((kitchen) => (
-                  <option key={kitchen.id} value={kitchen.id}>
-                    {kitchen.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div className="organization-card">
-              <span className="org-symbol">{org.name[0]}</span>
-              <div>
-                <strong>{org.name}</strong>
-                <small>
-                  {session.demo_mode ? "Локальная кухня" : "Кухня команды"}
-                </small>
+        <header className="kitchen-header">
+          <div className="kitchen-bar">
+            <a
+              className="kitchen-brand"
+              href={libraryPath(org.id)}
+              onClick={followLink}
+              aria-label="Рецепты мастера — к рецептам"
+            >
+              <Brand />
+            </a>
+            <nav className="kitchen-tabs" aria-label="Разделы кухни">
+              {tabs.map((tab) => (
+                <a
+                  key={tab.url}
+                  href={tab.url}
+                  aria-current={tab.selected ? "page" : undefined}
+                  onClick={followLink}
+                >
+                  <Icon name={tab.icon} size={18} />
+                  {tab.label}
+                </a>
+              ))}
+            </nav>
+            <details className="account-menu" key={path}>
+              <summary aria-label="Меню аккаунта">
+                <span className="avatar">
+                  {session.user.display_name.slice(0, 1)}
+                </span>
+                <span className="account-name">
+                  {session.user.display_name}
+                </span>
+                <Icon name="down" size={15} />
+              </summary>
+              <div className="account-menu-body">
+                <strong>{session.user.email}</strong>
+                <span>{roleName[org.role]}</span>
+                {session.organizations.length > 1 ? (
+                  <label>
+                    Кухня
+                    <select
+                      value={org.id}
+                      onChange={(e) => navigate(libraryPath(e.target.value))}
+                    >
+                      {session.organizations.map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span>{org.name}</span>
+                )}
+                {session.user.is_operator && (
+                  <button onClick={() => navigate("/customers")}>
+                    Клиенты сервиса
+                  </button>
+                )}
+                <button disabled={logoutBusy} onClick={() => void logout()}>
+                  <Icon name="logout" size={16} /> Выйти
+                </button>
               </div>
-            </div>
-          )}
-          <div className="nav-label">Моя кухня</div>
-          <nav aria-label="Главное меню">
-            <button
-              className={!id ? "active" : ""}
-              onClick={() => navigate(libraryPath(org.id))}
-            >
-              <Icon name="book" />
-              Книга рецептов
-              <Icon name="chevron" size={14} />
-            </button>
-            {org.role !== "reader" && (
-              <button
-                className={isNew ? "active" : ""}
-                onClick={() => navigate(libraryPath(org.id) + "/new")}
-              >
-                <Icon name="plus" />
-                Создать рецепт
-              </button>
-            )}
-          </nav>
-          <div className="sidebar-note recipe-sidebar-help">
-            <button className="text-button" onClick={() => navigate("/")}>
-              О сервисе <Icon name="arrow" size={14} />
-            </button>
+            </details>
           </div>
-          <div className="profile">
-            <span className="avatar">
-              {session.user.display_name.slice(0, 1) || "М"}
-            </span>
-            <div>
-              <strong>{session.user.display_name}</strong>
-              <small>{roleName[org.role]}</small>
-            </div>
-            <button
-              className="icon-button"
-              onClick={() => void logout()}
-              disabled={logoutBusy}
-              aria-label="Выйти из учётной записи"
-            >
-              <Icon name="logout" size={18} />
-            </button>
-          </div>
-        </aside>
+        </header>
         <div className="workspace">
-          <header className="topbar">
-            <div>
-              <Icon name="grid" size={16} />
-              <span>Моя кухня</span>
-              <span className="topbar-divider">/</span>
-              <strong>
-                {isNew
-                  ? "Новый рецепт"
-                  : isEditor
-                    ? "Редактор"
-                    : id
-                      ? "Просмотр"
-                      : "Книга рецептов"}
-              </strong>
-            </div>
-            <span className="pilot-badge">
-              <span />
-              {session.demo_mode ? "Локальная кухня" : "Командный доступ"}
-            </span>
-          </header>
           <main
             id="main"
             className={`main-content ${isEditor ? "editor-page" : ""}`}
-            key={`${org.id}/${id || ""}/${parts[4] || ""}`}
+            key={`${org.id}/${setting}/${id || ""}/${parts[4] || ""}`}
           >
             {error && <ErrorBanner error={error} />}{" "}
-            {invalidRoute ? (
+            {setting && org.role !== "admin" ? (
+              <ErrorBanner error="Этот раздел доступен администратору кухни." />
+            ) : setting === "team" ? (
+              <>
+                <KitchenTeam org={org} user={session.user} />
+                <KitchenAISettings org={org} />
+              </>
+            ) : setting === "billing" ? (
+              <KitchenBilling org={org} user={session.user} />
+            ) : invalidRoute ? (
               <div className="empty-state">
                 <h1>Страница не найдена</h1>
                 <button
@@ -307,7 +386,12 @@ export default function App() {
             ) : id ? (
               <Reader org={org} id={id} navigate={navigate} />
             ) : (
-              <Library org={org} navigate={navigate} />
+              <>
+                {session.user.email_verified === false && (
+                  <VerifyEmailNotice email={session.user.email} />
+                )}
+                <Library org={org} navigate={navigate} />
+              </>
             )}
           </main>
         </div>

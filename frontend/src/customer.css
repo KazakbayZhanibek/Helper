@@ -1,0 +1,432 @@
+.account-entrance {
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100dvh;
+}
+.account-masthead {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px clamp(20px, 5vw, 64px);
+}
+.account-masthead a {
+  text-decoration: none;
+  color: inherit;
+}
+.account-example-link,
+.account-illustration a {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+.account-example-link {
+  font-size: 14px;
+  min-height: 44px;
+}
+.account-example-link:hover,
+.account-illustration a:hover {
+  text-decoration: underline;
+}
+.account-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  max-width: 1080px;
+  align-items: stretch;
+  margin: clamp(12px, 4vh, 48px) auto 0;
+  padding: 0 32px 48px;
+}
+.account-sheet {
+  min-width: 0;
+  align-self: center;
+  padding: clamp(28px, 4.5vw, 64px);
+  overflow-wrap: anywhere;
+}
+.account-sheet h1 {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-weight: 500;
+  line-height: 1.08;
+  font-size: clamp(34px, 3.7vw, 52px);
+  margin: 0 0 12px;
+}
+.account-subtitle,
+.account-success p {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0 0 25px;
+}
+.account-form {
+  display: grid;
+  gap: 15px;
+}
+.account-form label,
+.account-password label,
+.account-issued label {
+  font-size: 14px;
+}
+.account-form input,
+.account-form select,
+.account-issued input {
+  font-size: 16px;
+  font-weight: 400;
+  min-height: 46px;
+}
+.account-password {
+  display: grid;
+  gap: 7px;
+}
+.account-form .field-hint {
+  font-size: 13px;
+  margin: -4px 0 0;
+}
+.account-name-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.account-forgot {
+  justify-self: end;
+  margin-top: -9px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-sheet .button,
+.customer-page .button {
+  min-height: 46px;
+  font-size: 14px;
+  white-space: normal;
+  text-align: center;
+}
+.account-sheet .button.full {
+  justify-content: center;
+}
+.account-switch {
+  margin: 24px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.account-switch a,
+.account-forgot,
+.account-sheet .notice a {
+  text-underline-offset: 3px;
+}
+.account-switch a {
+  margin-left: 3px;
+  font-weight: 650;
+}
+.account-sheet .notice {
+  margin: 4px 0;
+}
+.account-demo {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 10px;
+  color: var(--muted);
+}
+.account-demo summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.account-illustration {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background: var(--soft);
+  color: var(--ink);
+  overflow: hidden;
+  border-radius: 6px;
+  min-height: 420px;
+  margin: 0;
+}
+.account-illustration img {
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  object-position: 60% center;
+}
+.account-illustration figcaption {
+  padding: 16px 24px 20px;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+.account-illustration figcaption > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.account-illustration a {
+  font:
+    500 25px/1.15 "Iowan Old Style",
+    Georgia,
+    serif;
+  text-decoration: none;
+}
+.account-success-mark {
+  margin-bottom: 18px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--pine);
+  background: var(--soft);
+}
+.account-success .text-button {
+  margin-top: 8px;
+}
+.renewal-dialog:has(.account-renew) {
+  width: min(400px, calc(100vw - 32px));
+}
+.account-renew {
+  padding: 26px;
+  background: var(--surface);
+}
+.account-renew h1 {
+  font-size: 32px;
+}
+.customer-page {
+  max-width: 1150px;
+}
+.customer-heading {
+  margin-bottom: 28px;
+}
+.customer-heading h1 {
+  margin-bottom: 4px;
+}
+.customer-heading p,
+.account-period {
+  color: var(--muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.account-management-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(250px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.account-sidepanel,
+.account-plan {
+  padding: clamp(20px, 2.5vw, 32px);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.account-sidepanel h2 {
+  margin: 0 0 18px;
+}
+.account-roster > section {
+  margin-bottom: 28px;
+}
+.account-roster h2 {
+  margin: 0 0 8px;
+}
+.account-roster small {
+  font-size: 15px;
+  color: var(--muted);
+}
+.account-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.account-people li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+.account-initial {
+  display: grid;
+  place-items: center;
+  background: var(--soft);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--pine);
+  font-weight: 700;
+}
+.account-person {
+  flex: 1 1 128px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-person span,
+.account-role,
+.account-change-confirm {
+  font-size: 13px;
+  color: var(--muted);
+}
+.account-change-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.account-people .text-button {
+  font-size: 13px;
+  min-height: 36px;
+}
+.account-issued {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.account-operation-note {
+  margin: 16px 0;
+  color: var(--pine);
+}
+.account-verify-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--soft);
+  padding: 14px 16px;
+  border-radius: 6px;
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.account-verify-note > svg {
+  margin-top: 2px;
+  color: var(--pine);
+}
+.account-verify-note strong {
+  font-size: 14px;
+}
+.account-verify-note p {
+  margin: 3px 0;
+  font-size: 13px;
+}
+.account-verify-note .text-button {
+  padding: 2px 0;
+  min-height: 28px;
+}
+.account-billing-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+.account-plan-label {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.account-plan h2 {
+  margin: 0 0 6px;
+  font:
+    500 32px/1.2 "Iowan Old Style",
+    Georgia,
+    serif;
+}
+.account-plan-state,
+.account-price {
+  margin: 0 0 18px;
+}
+.account-period {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.account-upgrade {
+  background: var(--soft);
+}
+.account-plan-benefits {
+  padding: 0;
+  margin: 0 0 24px;
+  list-style: none;
+}
+.account-plan-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.account-payment-hint {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.account-capacity {
+  margin: 14px 0;
+}
+.account-capacity > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.account-capacity progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--pine);
+  border: 0;
+  border-radius: 3px;
+  background: var(--line);
+}
+.account-capacity progress::-webkit-progress-bar {
+  background: var(--line);
+  border-radius: 3px;
+}
+.account-capacity progress::-webkit-progress-value {
+  background: var(--pine);
+  border-radius: 3px;
+}
+.account-capacity progress::-moz-progress-bar {
+  background: var(--pine);
+  border-radius: 3px;
+}
+.account-current .button {
+  margin-top: 12px;
+}
+@media (max-width: 900px) {
+  .account-management-layout {
+    grid-template-columns: 1fr;
+  }
+  .account-sidepanel {
+    max-width: 560px;
+  }
+  .account-billing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 690px) {
+  .account-illustration {
+    display: none;
+  }
+  .account-stage {
+    display: block;
+    max-width: 470px;
+    margin: 8px auto 0;
+    padding: 20px;
+  }
+  .account-masthead {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .account-sheet {
+    padding: 8px 0 24px;
+  }
+  .account-renew {
+    padding: 24px;
+  }
+  .account-name-fields,
+  .account-billing-grid {
+    grid-template-columns: 1fr;
+  }
+  .customer-heading {
+    margin-bottom: 18px;
+  }
+  .account-people li {
+    gap: 8px;
+  }
+}

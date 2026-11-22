@@ -17,6 +17,20 @@ x-application: &application
     POSTGRES_USER: recipes
     POSTGRES_PASSWORD: ${RECIPE_DB_PASSWORD:?Set RECIPE_DB_PASSWORD}
     PRIVATE_MEDIA_ROOT: /var/lib/kitchen/media
+    APP_PUBLIC_URL: https://${RECIPE_HOST:?Set RECIPE_HOST}
+    DEFAULT_FROM_EMAIL: ${RECIPE_EMAIL_FROM:-recipes@localhost}
+    EMAIL_HOST: ${RECIPE_SMTP_HOST:-localhost}
+    EMAIL_PORT: ${RECIPE_SMTP_PORT:-587}
+    EMAIL_HOST_USER: ${RECIPE_SMTP_USER:-}
+    EMAIL_HOST_PASSWORD: ${RECIPE_SMTP_PASSWORD:-}
+    EMAIL_USE_TLS: ${RECIPE_SMTP_TLS:-1}
+    EMAIL_USE_SSL: ${RECIPE_SMTP_SSL:-0}
+    ACCOUNT_MAIL_IN_MEDIA_WORKER: "0"
+    DODO_MODE: ${RECIPE_DODO_MODE:-test}
+    DODO_PRODUCT_ID: ${RECIPE_DODO_PRODUCT_ID:-}
+    DODO_BUSINESS_ID: ${RECIPE_DODO_BUSINESS_ID:-}
+    DODO_API_KEY: ${RECIPE_DODO_API_KEY:-}
+    DODO_WEBHOOK_SECRET: ${RECIPE_DODO_WEBHOOK_SECRET:-}
     STEP_DRAFT_BACKEND: openrouter
     STEP_DRAFT_ENDPOINT: https://openrouter.ai/api/v1
     STEP_DRAFT_MODEL: openrouter/free
@@ -83,6 +97,13 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  mail:
+    <<: *application
+    command: ["python", "manage.py", "deliver_account_mail"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
   web:
     build:
       context: .

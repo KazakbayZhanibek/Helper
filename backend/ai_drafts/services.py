@@ -97,6 +97,9 @@ def request_proposal(member, instruction_id, data, supplied):
     if not segments or len(segments) > 300 or sum(len(segment.text) for segment in segments) > 18_000:
         s.fail('TRANSCRIPT_SIZE_LIMIT', 'Для ИИ нужна расшифровка из 1–300 фрагментов, не более 18 000 символов.', 422)
     config = capabilities(member.organization)['step_drafts']
+    if config.get('external'):
+        from customer_accounts.services import require_verified_email
+        require_verified_email(member.user)
     if not config['available']:
         s.fail('AI_DISABLED', config['reason'], 503)
     payload = {'transcript_id': str(transcript.id), 'transcript_revision': transcript.revision, 'base_working_revision': working.revision, 'language': working.language}
@@ -144,4 +147,4 @@ def apply_proposal(member, instruction_id, proposal_id, data, supplied):
     proposal.applied_at, proposal.applied_by = timezone.now(), member.user
     proposal.save(update_fields=['applied_at', 'applied_by', 'updated_at'])
     s.audit(member, 'draft_proposal.applied', proposal)
-    return s.working_data(working), 200
+    return s.working_data(working, member), 200

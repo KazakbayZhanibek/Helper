@@ -26,7 +26,14 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose build
-          docker compose up -d
+          cat > "$RUNNER_TEMP/recipes-mail.yaml" <<'YAML'
+          services:
+            mail:
+              environment:
+                EMAIL_BACKEND: django.core.mail.backends.filebased.EmailBackend
+                EMAIL_FILE_PATH: /tmp/recipe-mail
+          YAML
+          docker compose -f compose.yaml -f "$RUNNER_TEMP/recipes-mail.yaml" up -d
       - name: Test HTTPS, SPA, sessions, migrations and private media
         shell: bash
         run: |
@@ -57,11 +64,13 @@ jobs:
           docker compose exec -T api sh -ec 'test "$(id -u)" != 0 && touch /var/lib/kitchen/media/ci-volume-test'
           docker compose exec -T worker sh -ec 'test -e /var/lib/kitchen/media/ci-volume-test && ffprobe -version >/dev/null'
           docker compose exec -T worker python manage.py processing_worker --once
+      - name: Exercise signup, real worker delivery and customer isolation
+        run: python3 scripts/smoke_customer_accounts.py --ca-file "$RUNNER_TEMP/recipe-ci-ca.crt"
       - name: Show status on failure
         if: failure()
         run: |
           docker compose ps -a
-          docker compose logs --tail=60 migrate api worker web
+          docker compose logs --tail=60 migrate api worker mail web
       - name: Release ephemeral services
         if: always()
         run: docker compose down --volumes

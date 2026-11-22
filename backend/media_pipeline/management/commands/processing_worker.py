@@ -1,9 +1,11 @@
 import time
 import logging
+from django.conf import settings
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 
+from customer_accounts.delivery import deliver_one
 from media_pipeline.worker import process_one
 from media_pipeline.maintenance import maintenance_tick
 
@@ -34,7 +36,13 @@ class Command(BaseCommand):
                         except Exception:
                             logger.error('Worker maintenance failed; retrying on next scheduled pass.')
                             failed = True
-                    processed = process_one()
+                    try:
+                        delivered = settings.ACCOUNT_MAIL_IN_MEDIA_WORKER and deliver_one()
+                    except Exception:
+                        logger.error('Account mail delivery failed; the queue will retry.')
+                        delivered = False
+                        failed = True
+                    processed = process_one() or delivered
                 except Exception:
                     # Do not log exception text: it may contain source data or
                     # credentials. Leased jobs recover through existing fencing.

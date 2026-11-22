@@ -56,7 +56,15 @@ class Command(BaseCommand):
             user = User.objects.create_user(email, password, display_name=name)
         if not user.is_active:
             raise CommandError('Этот аккаунт отключён.')
-        member, _ = Membership.objects.get_or_create(organization=org, user=user, defaults={'role': options['role']})
+        member = Membership.objects.filter(organization=org, user=user).first()
+        if member is None:
+            from billing.services import enforce_member_limit
+            from core.http import DomainError
+            try:
+                enforce_member_limit(org)
+            except DomainError as error:
+                raise CommandError(error.message) from error
+            member = Membership.objects.create(organization=org, user=user, role=options['role'])
         if member.role != options['role'] or not member.is_active:
             raise CommandError('У аккаунта уже есть членство с другими правами или статусом.')
         self.stdout.write(self.style.SUCCESS(f'{org.name} ({org.pk}) · {user.email} · {member.role}'))

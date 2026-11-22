@@ -56,6 +56,7 @@ def main():
     if not 1 <= port <= 65535 or port == 8000:
         parser.error('Choose a web port in 1..65535 other than the API port 8000.')
     local_origins = [f'http://{host}:{port}' for host in ('localhost', '127.0.0.1')]
+    env.setdefault('APP_PUBLIC_URL', f'http://127.0.0.1:{port}')
     env['CSRF_TRUSTED_ORIGINS'] = ','.join(filter(None, [env.get('CSRF_TRUSTED_ORIGINS'), *local_origins]))
     if len(env.get('DEMO_PASSWORD', '')) < 12:
         raise SystemExit('Set DEMO_PASSWORD (12+ characters) in .env for local demo accounts.')

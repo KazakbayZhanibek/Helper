@@ -121,44 +121,23 @@ export function Library({
               ? "Здесь хранятся прежние инструкции вашей команды."
               : reader
                 ? "Выберите блюдо и готовьте по шагам."
-                : "Создавайте рецепты и делитесь ими с участниками вашей кухни."}
+                : org.name}
           </p>
         </div>
-        {!reader && (
-          <button
-            className="button primary"
-            onClick={() => navigate(libraryPath(org.id) + "/new")}
-          >
-            <Icon name="plus" /> Новый рецепт
-          </button>
-        )}
-      </div>
-      <div
-        className="recipe-collection-switch"
-        role="group"
-        aria-label="Раздел книги"
-      >
-        {(
-          [
-            [false, "Рецепты"],
-            [true, "Архив инструкций"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            type="button"
-            key={label}
-            aria-pressed={archive === value}
-            onClick={() => {
-              if (archive === value) return;
-              setArchive(value);
-              setQuery("");
-              setStatus("");
-              setLanguage("");
-            }}
-          >
-            {label}
-          </button>
-        ))}
+        {!reader &&
+          (loading ||
+            items.length > 0 ||
+            !!query ||
+            !!status ||
+            !!language ||
+            archive) && (
+            <button
+              className="button primary"
+              onClick={() => navigate(libraryPath(org.id) + "/new")}
+            >
+              <Icon name="plus" /> Новый рецепт
+            </button>
+          )}
       </div>
       <div className="library-toolbar">
         <div className="search-field">
@@ -184,18 +163,36 @@ export function Library({
             </button>
           )}
         </div>
-        <label className="select-filter">
-          <span className="sr-only">Язык</span>
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-          >
-            <option value="">Все языки</option>
-            <option value="ru">Русский</option>
-            <option value="kk">Қазақша</option>
-            <option value="mixed">Смешанный</option>
-          </select>
-        </label>
+        <details className="library-options">
+          <summary>Параметры поиска</summary>
+          <div>
+            <label>
+              Раздел
+              <select
+                value={archive ? "legacy" : "recipe"}
+                onChange={(e) => {
+                  setArchive(e.target.value === "legacy");
+                  setStatus("");
+                }}
+              >
+                <option value="recipe">Рецепты</option>
+                <option value="legacy">Архив инструкций</option>
+              </select>
+            </label>
+            <label className="select-filter">
+              <span className="sr-only">Язык</span>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+              >
+                <option value="">Все языки</option>
+                <option value="ru">Русский</option>
+                <option value="kk">Қазақша</option>
+                <option value="mixed">Смешанный</option>
+              </select>
+            </label>
+          </div>
+        </details>
       </div>
       {!reader && (
         <div className="tabs" role="group" aria-label="Статус публикации">
@@ -239,7 +236,9 @@ export function Library({
               ? "Ничего не нашлось"
               : archive
                 ? "Архив пуст"
-                : "Пока нет рецептов"}
+                : reader
+                  ? "Рецепты появятся здесь"
+                  : "Добавьте первый рецепт"}
           </h2>
           <p>
             {query || status || language
@@ -248,7 +247,7 @@ export function Library({
                 ? "Прежние инструкции будут доступны в этом разделе."
                 : reader
                   ? "Здесь появятся рецепты, которые опубликует ваша кухня."
-                  : "Начните с первого блюда. Ингредиенты и фотографии сможете добавить в редакторе."}
+                  : "Начните с названия блюда. Видео и ингредиенты можно добавить позже."}
           </p>
           {query || status || language ? (
             <button
@@ -269,7 +268,7 @@ export function Library({
                 onClick={() => navigate(libraryPath(org.id) + "/new")}
               >
                 <Icon name="plus" />
-                Создать рецепт
+                Добавить рецепт
               </button>
             )
           )}
@@ -395,7 +394,7 @@ export function NewRecipe({
   const [purpose, setPurpose] = useState("");
   const [language, setLanguage] = useState<Language>("ru");
   const [sourceMode, setSourceMode] = useState<"real" | "manual" | "camera">(
-    "real",
+    "manual",
   );
   const [file, setFile] = useState<File | null>(null);
   const [rights, setRights] = useState(false);
@@ -410,7 +409,11 @@ export function NewRecipe({
     locked ||
     (!created &&
       Boolean(
-        title || purpose || file || language !== "ru" || sourceMode !== "real",
+        title ||
+        purpose ||
+        file ||
+        language !== "ru" ||
+        sourceMode !== "manual",
       ));
   useEffect(() => {
     setDirtyGuard(unsaved);
@@ -437,10 +440,8 @@ export function NewRecipe({
     event.preventDefault();
     if (creating.current || (sourceMode === "real" && (!file || !rights)))
       return;
-    if (title.trim().length < 3 || purpose.trim().length < 10) {
-      setError(
-        "Введите название от 3 символов и описание от 10 символов без пробелов по краям.",
-      );
+    if (title.trim().length < 3) {
+      setError("Введите название блюда из трёх или более символов.");
       return;
     }
     creating.current = true;
@@ -495,7 +496,7 @@ export function NewRecipe({
           </p>
         </div>
       </div>
-      <div className="create-layout">
+      <div className="create-layout simple-create">
         <form className="form-panel stack" onSubmit={create}>
           <label>
             Название блюда
@@ -513,40 +514,40 @@ export function NewRecipe({
               autoFocus
             />
           </label>
-          <label>
-            Описание блюда
-            <span className="field-hint">
-              Что приготовим и каким должно получиться блюдо? От 10 до 600
-              символов.
-            </span>
-            <textarea
-              value={purpose}
-              onChange={(e) => {
-                setPurpose(e.target.value);
-                key.current = requestKey();
-              }}
-              required
-              minLength={10}
-              maxLength={600}
-              rows={4}
-              disabled={locked || !!created}
-            />
-          </label>
-          <label>
-            Язык рецепта
-            <select
-              value={language}
-              onChange={(e) => {
-                setLanguage(e.target.value as Language);
-                key.current = requestKey();
-              }}
-              disabled={locked || !!created}
-            >
-              <option value="ru">Русский</option>
-              <option value="kk">Қазақша · экспериментально</option>
-              <option value="mixed">Смешанный · экспериментально</option>
-            </select>
-          </label>
+          <details className="form-details">
+            <summary>Описание и язык · необязательно</summary>
+            <label>
+              Описание блюда
+              <span className="field-hint">
+                Что приготовим и каким должно получиться блюдо? До 600 символов.
+              </span>
+              <textarea
+                value={purpose}
+                onChange={(e) => {
+                  setPurpose(e.target.value);
+                  key.current = requestKey();
+                }}
+                maxLength={600}
+                rows={4}
+                disabled={locked || !!created}
+              />
+            </label>
+            <label>
+              Язык рецепта
+              <select
+                value={language}
+                onChange={(e) => {
+                  setLanguage(e.target.value as Language);
+                  key.current = requestKey();
+                }}
+                disabled={locked || !!created}
+              >
+                <option value="ru">Русский</option>
+                <option value="kk">Қазақша · экспериментально</option>
+                <option value="mixed">Смешанный · экспериментально</option>
+              </select>
+            </label>
+          </details>
           <fieldset className="source-mode" disabled={locked || !!created}>
             <legend>Видео приготовления</legend>
             <label className="checkbox-label">
@@ -583,7 +584,7 @@ export function NewRecipe({
                   key.current = requestKey();
                 }}
               />
-              <span>Добавить видео позже</span>
+              <span>Начать без видео</span>
             </label>
           </fieldset>
           {sourceMode === "real" ? (
@@ -655,32 +656,6 @@ export function NewRecipe({
             </button>
           )}
         </form>
-        <aside className="create-aside">
-          <h2>Что пригодится для рецепта</h2>
-          <ul className="recipe-create-tips">
-            <li>
-              <strong>Ингредиенты и порции</strong>
-              <p>
-                Запишите, сколько продуктов понадобилось и на сколько человек
-                рассчитано блюдо.
-              </p>
-            </li>
-            <li>
-              <strong>Движения крупным планом</strong>
-              <p>
-                Покажите, как складываете тесто, нарезаете овощи или проверяете
-                готовность. По этим кадрам будут учиться.
-              </p>
-            </li>
-            <li>
-              <strong>Уточнения повара</strong>
-              <p>
-                Время, огонь и температуру укажите в шагах, если они важны для
-                результата.
-              </p>
-            </li>
-          </ul>
-        </aside>
       </div>
     </>
   );

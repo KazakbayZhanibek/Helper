@@ -13,6 +13,7 @@ __pycache__/
 .env.local
 .env.*.local
 backend/private-media/
+backend/local-mail/
 artifacts/test-results/
 artifacts/screenshots/
 artifacts/test-media/

@@ -17,7 +17,12 @@ from . import services as s
 
 
 def profile(user):
-    return {'user': {'id': str(user.id), 'email': user.email, 'display_name': user.display_name}, 'organizations': [{'id': str(m.organization_id), 'name': m.organization.name, 'role': m.role} for m in Membership.objects.select_related('organization').filter(user=user, is_active=True, organization__status='active')], 'demo_mode': settings.DEMO_MODE}
+    from customer_accounts.services import is_email_verified
+    return {'user': {'id': str(user.id), 'email': user.email, 'display_name': user.display_name,
+                     'email_verified': is_email_verified(user), 'is_operator': user.is_superuser},
+            'organizations': [{'id': str(m.organization_id), 'name': m.organization.name, 'role': m.role}
+                              for m in Membership.objects.select_related('organization').filter(user=user, is_active=True, organization__status='active').order_by('joined_at')],
+            'demo_mode': settings.DEMO_MODE}
 
 
 class CsrfView(APIView):
@@ -134,14 +139,20 @@ class InstructionView(APIView):
     def get(self, request, org_id, instruction_id):
         member = s.membership(request.user, org_id)
         instruction = s.instruction_for(member, instruction_id)
-        return Response({**s.summary(instruction, member.role == 'reader'), 'publication': s.version_data(instruction.current_version), 'working_copy': None if member.role == 'reader' else s.working_data(instruction.working_copy)})
+        return Response({**s.summary(instruction, member.role == 'reader'), 'publication': s.version_data(instruction.current_version), 'working_copy': None if member.role == 'reader' else s.working_data(instruction.working_copy, member)})
+
+
+    def delete(self, request, org_id, instruction_id):
+        member = s.membership(request.user, org_id, {'admin', 'author'})
+        s.delete_recipe_draft(member, instruction_id, request.headers.get('If-Match'))
+        return Response(status=204)
 
 
 class WorkingCopyView(APIView):
     def get(self, request, org_id, instruction_id):
         member = s.membership(request.user, org_id, s.WRITERS)
         instruction = s.instruction_for(member, instruction_id)
-        return working_response(s.working_data(instruction.working_copy))
+        return working_response(s.working_data(instruction.working_copy, member))
     def put(self, request, org_id, instruction_id):
         member = s.membership(request.user, org_id, s.WRITERS)
         return working_response(s.save_working(member, instruction_id, request.data, request.headers.get('If-Match')))

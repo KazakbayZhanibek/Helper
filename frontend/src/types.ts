@@ -2,7 +2,7 @@ export type Role = "admin" | "author" | "reviewer" | "reader";
 export type Language = "ru" | "kk" | "mixed";
 export type Organization = { id: string; name: string; role: Role };
 export type Session = {
-  user: { id: string; email: string; display_name: string };
+  user: { id: string; email: string; display_name: string; email_verified?: boolean; is_operator?: boolean };
   organizations: Organization[];
   demo_mode: boolean;
 };
@@ -38,6 +38,7 @@ export type Recipe = {
   servings: number | null;
 };
 export type WorkingCopy = {
+  can_delete_draft?: boolean;
   id: string;
   instruction_id: string;
   revision: number;

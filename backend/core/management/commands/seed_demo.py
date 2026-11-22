@@ -30,6 +30,8 @@ class Command(BaseCommand):
             raise CommandError('Set DEMO_PASSWORD to a password of at least 12 characters.')
         org, _ = Organization.objects.get_or_create(id=DEMO_ORG, defaults={'name': 'Учебная кухня'})
         org = Organization.objects.select_for_update().get(pk=org.pk)
+        if not User.objects.filter(email__iexact='operator@demo.local').exists():
+            User.objects.create_superuser('operator@demo.local', password, display_name='Оператор сервиса')
         members = {}
         for role, name in [('admin', 'Администратор кухни'), ('author', 'Алия'), ('reviewer', 'Марат'), ('reader', 'Дана')]:
             email = f'{role}@demo.local'

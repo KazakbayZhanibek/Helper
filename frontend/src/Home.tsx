@@ -1,6 +1,16 @@
-import { Brand, Icon } from "./components";
-import { libraryPath } from "./api";
+import { useEffect, useState } from "react";
+import { api, libraryPath } from "./api";
+import { Brand, Icon, ErrorBanner, Loading } from "./components";
+import { countNoun } from "./format";
 import type { Navigate, Session } from "./types";
+
+type Plan = {
+  code: string;
+  name: string;
+  recipe_limit: number;
+  member_limit: number;
+  price_label: string;
+};
 
 export function Home({
   session,
@@ -9,133 +19,127 @@ export function Home({
   session: Session | null;
   navigate: Navigate;
 }) {
-  const organization = session?.organizations[0];
-  const destination = organization ? libraryPath(organization.id) : "/login";
-  const enterLabel = organization
-    ? "Открыть книгу рецептов"
-    : "Войти в книгу рецептов";
-
+  const kitchen = session?.organizations[0];
+  const operator = !kitchen && session?.user.is_operator;
+  const entry = kitchen
+    ? libraryPath(kitchen.id)
+    : operator
+      ? "/customers"
+      : "/register";
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    api<{ plans: Plan[] }>("/billing/plans", { signal: abort.signal })
+      .then((value) => setPlans(value.plans))
+      .catch((e) => {
+        if (!abort.signal.aborted) setError(e.message);
+      });
+    return () => abort.abort();
+  }, [retry]);
   return (
-    <div className="public-site recipe-site">
+    <div className="public-site recipe-site product-home">
       <a className="skip-link" href="#home-main">
         Перейти к содержимому
       </a>
       <header className="public-header">
         <Brand />
         <nav aria-label="Главное меню">
-          <a href="#how-it-works">Как это работает</a>
-          <button
-            className="button secondary"
-            onClick={() => navigate(destination)}
-          >
-            {organization ? "Мои рецепты" : "Войти"}{" "}
-            <Icon name="arrow" size={16} />
-          </button>
+          <a href="#plans">Тарифы</a>
+          <a className="button secondary" href={session ? entry : "/login"}>
+            {kitchen ? "Моя кухня" : operator ? "Клиенты" : "Войти"}
+          </a>
         </nav>
       </header>
       <main id="home-main">
-        <section className="home-hero recipe-hero" aria-labelledby="home-title">
-          <div className="home-intro">
-            <h1 id="home-title">
-              Ваши рецепты
+        <section className="sales-hero">
+          <div>
+            <h1>
+              Ваша кухня.
               <br />
-              из видео
+              Ваша книга
+              <br />
+              <em>рецептов.</em>
             </h1>
-            <p className="home-lead">
-              Снимите, как вы готовите. ИИ предложит шаги с фотографиями из
-              записи. Добавьте ингредиенты и порции, чтобы по вашему рецепту мог
-              приготовить другой человек.
+            <p>
+              Сохраните приготовление на видео, добавьте продукты и покажите
+              каждый шаг команде.
             </p>
             <div className="button-row">
               <button
                 className="button primary"
-                onClick={() => navigate(destination)}
+                onClick={() => navigate(entry)}
               >
-                {enterLabel} <Icon name="arrow" size={18} />
+                {kitchen
+                  ? "Открыть книгу"
+                  : operator
+                    ? "Клиенты сервиса"
+                    : "Создать кухню бесплатно"}{" "}
+                <Icon name="arrow" size={17} />
               </button>
-              <a className="button secondary" href="/example">
-                Посмотреть пример
+              <a className="text-button" href="/example">
+                Посмотреть рецепт
               </a>
             </div>
           </div>
-          <figure className="recipe-example">
+          <figure>
             <img
               src="/hero-kneading.jpg"
               width="1120"
               height="630"
+              alt="Повар замешивает тесто ладонью на присыпанном мукой столе"
               fetchPriority="high"
-              alt="Рука прижимает тесто к присыпанной мукой поверхности"
             />
             <figcaption>
-              <span className="recipe-image-kicker">
-                Пример шага · Замес теста
-              </span>
-              <h2>Прижмите тесто ладонью</h2>
-              <p>
-                Поднимите край теста, поверните кусок и снова прижмите его к
-                столу.
-              </p>
-              <a
-                className="recipe-credit"
-                href="https://www.pexels.com/video/a-person-kneading-the-dough-7236946/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Кадр из видео Eva Bronzini / Pexels
+              Ручной замес теста{" "}
+              <a href="https://www.pexels.com/video/a-person-kneading-the-dough-7236946/">
+                Eva Bronzini / Pexels
               </a>
             </figcaption>
           </figure>
         </section>
-        <section
-          className="home-process recipe-process"
-          id="how-it-works"
-          aria-labelledby="process-title"
-        >
-          <div className="home-section-heading">
-            <h2 id="process-title">
-              Как составить
-              <br />
-              видеорецепт
-            </h2>
-          </div>
-          <ol className="home-process-list">
-            <li>
-              <span aria-hidden="true">01</span>
-              <div>
-                <h3>Снимите приготовление</h3>
-                <p>
-                  Загрузите готовое видео или включите камеру. Держите руки и
-                  продукты в кадре, а количество и время называйте вслух.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span aria-hidden="true">02</span>
-              <div>
-                <h3>Проверьте шаги и фотографии</h3>
-                <p>
-                  Сверьте черновик ИИ с записью. Уточните движения, внесите
-                  ингредиенты и укажите, сколько порций получится. Лимит
-                  распознавания виден до запуска.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span aria-hidden="true">03</span>
-              <div>
-                <h3>Откройте рецепт своей кухне</h3>
-                <p>
-                  После проверки опубликуйте рецепт. Участники смогут открыть
-                  его с телефона и сверяться с фотографиями во время готовки.
-                </p>
-              </div>
-            </li>
-          </ol>
+        <section id="plans" className="sales-plans">
+          <h2>Тарифы для кухни</h2>
+          {error ? (
+            <ErrorBanner error={error}>
+              <button
+                className="text-button"
+                onClick={() => {
+                  setError("");
+                  setRetry((n) => n + 1);
+                }}
+              >
+                Загрузить тарифы
+              </button>
+            </ErrorBanner>
+          ) : !plans.length ? (
+            <Loading label="Загружаем тарифы…" />
+          ) : (
+            <div className="plan-list">
+              {plans.map((plan) => (
+                <div key={plan.code}>
+                  <h3>{plan.name}</h3>
+                  <p>
+                    До {plan.recipe_limit} рецептов · {plan.member_limit}{" "}
+                    {countNoun(plan.member_limit, [
+                      "участник",
+                      "участника",
+                      "участников",
+                    ])}
+                  </p>
+                  <strong>{plan.price_label}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </main>
       <footer className="public-footer">
         <Brand />
-        <a href="#home-main">Наверх ↑</a>
+        <a href="/example">
+          Открытый видеорецепт <Icon name="arrow" size={16} />
+        </a>
       </footer>
     </div>
   );

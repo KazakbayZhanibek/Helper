@@ -98,8 +98,20 @@ def step_data(step):
     return {'id': str(step.id), 'ordinal': step.ordinal, 'title': step.title, 'description': step.description, 'start_ms': step.start_ms, 'end_ms': step.end_ms, 'origin': step.origin, 'checked': step.checked_by_id is not None, 'checked_by': str(step.checked_by_id) if step.checked_by_id else None, 'evidence_segment_ids': step.evidence_segment_ids, 'evidence_transcript_revision': step.evidence_transcript_revision, 'evidence_frame_ids': step.evidence_frame_ids, 'photo_demonstration': step.photo_demonstration, 'evidence_visual_session_id': str(step.evidence_visual_session_id) if step.evidence_visual_session_id else None, 'evidence_frames': step_evidence_frames(step), 'warning_codes': step.warning_codes}
 
 
-def working_data(working):
-    return {'id': str(working.id), 'instruction_id': str(working.instruction_id), 'revision': working.revision, 'etag': etag(working), 'editable': working.is_open and working.workflow == 'draft', 'is_open': working.is_open, 'workflow': working.workflow, 'title': working.title, 'purpose': working.purpose, 'language': working.language, 'recipe': working.recipe, 'steps': [step_data(s) for s in working.steps.all()], 'source': source_data(working.instruction.source_asset), 'return_reason': working.return_reason}
+def may_delete_draft(member, instruction):
+    return member is not None and (
+        member.role == 'admin' or (member.role == 'author' and member.user_id == instruction.owner_id)
+    )
+
+
+def is_unpublished_recipe_draft(instruction, working):
+    return ((instruction.content_kind == 'recipe' or working.recipe is not None) and working.is_open and working.workflow == 'draft'
+            and not instruction.current_version_id and not working.based_on_version_id and not instruction.versions.exists())
+
+
+def working_data(working, member=None):
+    can_delete = may_delete_draft(member, working.instruction) and is_unpublished_recipe_draft(working.instruction, working)
+    return {'can_delete_draft': can_delete, 'id': str(working.id), 'instruction_id': str(working.instruction_id), 'revision': working.revision, 'etag': etag(working), 'editable': working.is_open and working.workflow == 'draft', 'is_open': working.is_open, 'workflow': working.workflow, 'title': working.title, 'purpose': working.purpose, 'language': working.language, 'recipe': working.recipe, 'steps': [step_data(s) for s in working.steps.all()], 'source': source_data(working.instruction.source_asset), 'return_reason': working.return_reason}
 
 
 def version_data(version):
@@ -158,9 +170,9 @@ def text_field(data, name, minimum, maximum):
     return value
 
 
-def content_fields(data):
+def content_fields(data, *, recipe=False):
     title = text_field(data, 'title', 3, 120)
-    purpose = text_field(data, 'purpose', 10, 600)
+    purpose = text_field({**data, 'purpose': data.get('purpose', '')}, 'purpose', 0 if recipe else 10, 600)
     language = data.get('language')
     if not isinstance(language, str) or language not in {'ru', 'kk', 'mixed'}:
         fail('VALIDATION_ERROR', 'Выберите язык описания.', fields={'language': ['Выберите русский, казахский или смешанный.']})
@@ -241,13 +253,17 @@ def idempotent(request, member, operation):
         return payload, status
 
 
+@transaction.atomic
 def create_instruction(member, data):
     allowed_fields(data, {'title', 'purpose', 'language', 'demo_source', 'recipe'})
-    title, purpose, language = content_fields(data)
+    title, purpose, language = content_fields(data, recipe=data.get('recipe') is not None)
     dedicated = data.get('recipe') is not None
     recipe = validate_recipe(data.get('recipe'), dedicated=dedicated)
     if 'demo_source' in data and type(data['demo_source']) is not bool:
         fail('VALIDATION_ERROR', 'demo_source должен быть логическим значением.')
+    from billing.services import enforce_recipe_limit
+    Organization.objects.select_for_update().get(pk=member.organization_id)
+    enforce_recipe_limit(member.organization)
     source = None
     if data.get('demo_source'):
         if not settings.DEMO_MODE:
@@ -259,7 +275,28 @@ def create_instruction(member, data):
     instruction = Instruction.objects.create(organization=member.organization, owner=member.user, source_asset=source, content_kind='recipe' if dedicated else None)
     working = WorkingCopy.objects.create(organization=member.organization, instruction=instruction, title=title, purpose=purpose, language=language, recipe=recipe, library_search_text=library_search_text(title, purpose, recipe))
     audit(member, 'instruction.created', instruction)
-    return working_data(working), 201
+    return working_data(working, member), 201
+
+
+@transaction.atomic
+def delete_recipe_draft(member, instruction_id, supplied):
+    Organization.objects.select_for_update().get(pk=member.organization_id)
+    member = membership(member.user, member.organization_id, {'admin', 'author'})
+    instruction = instruction_for(member, instruction_id, lock=True)
+    if not may_delete_draft(member, instruction):
+        fail('FORBIDDEN', 'Удалить черновик может его автор или администратор кухни.', 403)
+    working = WorkingCopy.objects.select_for_update().get(instruction=instruction)
+    require_match(working, supplied)
+    if not is_unpublished_recipe_draft(instruction, working):
+        fail('DRAFT_DELETE_UNAVAILABLE', 'Удаление доступно только для черновика рецепта без публикаций.', 409)
+    now = timezone.now()
+    if (instruction.uploads.filter(state__in=('pending', 'uploading'), expires_at__gt=now).exists()
+            or instruction.processing_jobs.filter(state__in=('queued', 'running')).exists()
+            or instruction.visual_sessions.filter(state='active', expires_at__gt=now).exists()):
+        fail('DRAFT_PROCESSING_ACTIVE', 'Завершите или отмените загрузку, запись и обработку видео, затем повторите удаление.', 409)
+    instruction.lifecycle = 'deleted'
+    instruction.save(update_fields=['lifecycle', 'updated_at'])
+    audit(member, 'recipe.draft_deleted', instruction)
 
 
 def validate_steps(data, working):
@@ -301,15 +338,20 @@ def validate_steps(data, working):
 def save_working(member, instruction_id, data, supplied):
     allowed_fields(data, {'title', 'purpose', 'language', 'recipe', 'steps'})
     with transaction.atomic():
+        if 'recipe' in data:
+            Organization.objects.select_for_update().get(pk=member.organization_id)
         instruction = instruction_for(member, instruction_id, lock=True)
         working = WorkingCopy.objects.select_for_update().get(instruction=instruction)
         require_match(working, supplied)
         if not working.is_open or working.workflow != 'draft':
             fail('INVALID_STATE', 'Верните карточку в черновик перед редактированием.')
-        title, purpose, language = content_fields(data)
         steps = validate_steps(data, working)
         if 'recipe' in data:
-            working.recipe = validate_recipe(data['recipe'], dedicated=instruction.content_kind == 'recipe')
+            from billing.services import converting_legacy
+            recipe = validate_recipe(data['recipe'], dedicated=instruction.content_kind == 'recipe')
+            converting_legacy(working, recipe)
+            working.recipe = recipe
+        title, purpose, language = content_fields(data, recipe=working.recipe is not None)
         working.title, working.purpose, working.language = title, purpose, language
         working.library_search_text = library_search_text(title, purpose, working.recipe)
         # Rebuild order atomically. IDs stay stable; all review marks reset on editing.
@@ -317,7 +359,7 @@ def save_working(member, instruction_id, data, supplied):
         WorkingStep.objects.bulk_create([WorkingStep(organization=member.organization, working_copy=working, ordinal=i + 1, **step) for i, step in enumerate(steps)])
         bump(working)
         audit(member, 'working_copy.saved', instruction)
-        return working_data(working)
+        return working_data(working, member)
 
 
 def validate_ready(working):
@@ -327,7 +369,7 @@ def validate_ready(working):
     count = working.steps.count()
     if not 1 <= count <= 30:
         fail('VALIDATION_ERROR', 'Добавьте от 1 до 30 шагов.')
-    content_fields({'title': working.title, 'purpose': working.purpose, 'language': working.language})
+    content_fields({'title': working.title, 'purpose': working.purpose, 'language': working.language}, recipe=working.recipe is not None)
     validate_recipe(working.recipe, dedicated=working.instruction.content_kind == 'recipe', for_review=True)
     for step in working.steps.all():
         if step.end_ms > asset.duration_ms or step.end_ms <= step.start_ms:
@@ -384,7 +426,7 @@ def workflow_action(member, instruction_id, action, data, supplied):
             fail('NOT_FOUND', 'Действие не найдено.', 404)
         bump(working)
         audit(member, action.replace('/', '.'), instruction)
-        return working_data(working)
+        return working_data(working, member)
 
 
 def publish(member, instruction_id, data, supplied):
@@ -418,6 +460,7 @@ def publish(member, instruction_id, data, supplied):
 def create_draft(member, instruction_id, data):
     allowed_fields(data, {'source_version_id'})
     with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=member.organization_id)
         instruction = instruction_for(member, instruction_id, lock=True)
         working = WorkingCopy.objects.select_for_update().get(instruction=instruction)
         if working.is_open:
@@ -431,7 +474,10 @@ def create_draft(member, instruction_id, data):
             fail('NOT_FOUND', 'Версия не найдена.', 404)
         snapshot = version.snapshot
         working.title, working.purpose, working.language = snapshot['title'], snapshot['purpose'], snapshot['language']
-        working.recipe = validate_recipe(snapshot.get('recipe'), dedicated=instruction.content_kind == 'recipe')
+        from billing.services import converting_legacy
+        recipe = validate_recipe(snapshot.get('recipe'), dedicated=instruction.content_kind == 'recipe')
+        converting_legacy(working, recipe)
+        working.recipe = recipe
         working.library_search_text = library_search_text(working.title, working.purpose, working.recipe)
         working.workflow, working.is_open = 'draft', True
         working.based_on_version = version
@@ -445,7 +491,7 @@ def create_draft(member, instruction_id, data):
             WorkingStep.objects.create(organization=member.organization, working_copy=working, ordinal=i + 1, **values)
         bump(working)
         audit(member, 'draft.created', instruction)
-        return working_data(working)
+        return working_data(working, member)
 
 
 def withdraw_publication(member, instruction_id, data):

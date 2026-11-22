@@ -7,6 +7,8 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
         <path d="M3 12h18a9.4 9.4 0 0 1-18 0ZM9 21h6M9 9c-1.5-2.6 2.6-3.3 1.2-6M14 9c-1.5-2.6 2.6-3.3 1.2-6" />
       </>
     ),
+    people: <><circle cx="9" cy="8" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2m0-14a3 3 0 0 1 0 6m3 2a5 5 0 0 1 3 5" /></>,
+    card: <><rect x="2" y="5" width="20" height="14" rx="3" /><path d="M3 10h18M6 15h4" /></>,
     grid: (
       <>
         <rect x="3" y="3" width="7" height="7" rx="1" />
