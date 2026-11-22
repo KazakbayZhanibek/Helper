@@ -51,6 +51,61 @@
   outline-offset: 5px;
 }
 
+.cook-guide .current-step,
+.cook-guide .saved-step-photos,
+.cook-guide .teaching-photos {
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.cook-guide .cook-media-video[hidden],
+.cook-guide .cook-step-picture[hidden] {
+  display: none;
+}
+
+.cook-guide .saved-step-photos > .eyebrow {
+  display: none;
+}
+
+.cook-guide .saved-step-photos > .field-hint:last-child {
+  display: grid;
+  place-content: center;
+  aspect-ratio: 16 / 9;
+  background: var(--soft);
+  border-radius: 10px;
+}
+
+.cook-guide .video-frame,
+.cook-guide .teaching-photo-zoom {
+  margin: 0;
+  border-radius: 10px;
+}
+
+.cook-guide .teaching-photo-zoom img {
+  max-height: none;
+}
+
+.cook-guide .recipe-ingredients {
+  margin: 0 0 24px;
+}
+
+.cook-guide .reader-step-nav {
+  margin-top: 12px;
+}
+
+.cook-photo-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.cook-photo-switch .text-button {
+  min-height: 40px;
+}
+
 .cook-complete {
   padding: 20px;
   margin: 16px 0;

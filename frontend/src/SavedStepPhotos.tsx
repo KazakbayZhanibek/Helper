@@ -7,10 +7,12 @@ export function SavedStepPhotos({
   step,
   orgId,
   onJump,
+  oneAtATime = false,
 }: {
   step: Step;
   orgId: string;
   onJump: (ms: number) => void;
+  oneAtATime?: boolean;
 }) {
   const ids = step.evidence_frame_ids || [];
   if (!ids.length) return null;
@@ -43,6 +45,7 @@ export function SavedStepPhotos({
         frames={frames}
         ids={demonstration.length ? demonstration.map((photo) => photo.frame_id) : ids}
         label="Движение на видео"
+        oneAtATime={oneAtATime}
         onJump={onJump}
         captions={Object.fromEntries(demonstration.map((photo) => [photo.frame_id, photo.caption]))}
       />

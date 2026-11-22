@@ -54,7 +54,13 @@ function LocalStepPhoto({
         player.currentTime = timestamp / 1000;
       };
       player.onseeked = () => {
-        if (!player || !player.videoWidth || !player.videoHeight) return fail();
+        if (
+          !player ||
+          !player.videoWidth ||
+          !player.videoHeight ||
+          Math.abs(player.currentTime * 1000 - timestamp) > 150
+        )
+          return fail();
         const scale = Math.min(
           1,
           960 / Math.max(player.videoWidth, player.videoHeight),
@@ -134,6 +140,29 @@ function LocalStepPhoto({
   );
 }
 
+export function canShowStepPhoto(
+  step: Step,
+  recipe: boolean,
+  orgId: string | undefined,
+  source: Source | null,
+  start = step.start_ms,
+  end = step.end_ms,
+) {
+  return (
+    !!(orgId && step.evidence_frame_ids?.length) ||
+    !!(
+      recipe &&
+      source?.status === "ready" &&
+      source.playback_url &&
+      Number.isFinite(start) &&
+      Number.isFinite(end) &&
+      start >= 0 &&
+      end > start &&
+      (source.duration_ms === null || end <= source.duration_ms)
+    )
+  );
+}
+
 export function RecipeStepPhotos({
   step,
   recipe,
@@ -141,6 +170,7 @@ export function RecipeStepPhotos({
   source,
   start = step.start_ms,
   end = step.end_ms,
+  oneAtATime = false,
   onJump,
 }: {
   step: Step;
@@ -149,19 +179,21 @@ export function RecipeStepPhotos({
   source: Source | null;
   start?: number;
   end?: number;
+  oneAtATime?: boolean;
   onJump: (ms: number) => void;
 }) {
   if (orgId && step.evidence_frame_ids?.length)
-    return <SavedStepPhotos step={step} orgId={orgId} onJump={onJump} />;
+    return (
+      <SavedStepPhotos
+        step={step}
+        orgId={orgId}
+        onJump={onJump}
+        oneAtATime={oneAtATime}
+      />
+    );
   if (
-    !recipe ||
-    source?.status !== "ready" ||
-    !source.playback_url ||
-    !Number.isFinite(start) ||
-    !Number.isFinite(end) ||
-    start < 0 ||
-    end <= start ||
-    (source.duration_ms !== null && end > source.duration_ms)
+    !source?.playback_url ||
+    !canShowStepPhoto(step, recipe, orgId, source, start, end)
   )
     return null;
   const timestamp = start + (end - start) / 2;

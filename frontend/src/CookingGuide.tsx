@@ -1,28 +1,58 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { RecipeIngredients } from "./RecipeDetails";
-import { RecipeStepPhotos } from "./RecipeStepPhotos";
+import { canShowStepPhoto, RecipeStepPhotos } from "./RecipeStepPhotos";
 import { ErrorBanner, Icon, Video, time } from "./components";
 import { countNoun } from "./format";
 import type { Version } from "./types";
 
-export function CookingGuide({
-  snapshot,
-  orgId,
-}: {
+type GuideProps = {
   snapshot: Version["snapshot"];
   orgId?: string;
-}) {
+};
+
+export function CookingGuide(props: GuideProps) {
+  const source = props.snapshot.source;
+  return (
+    <Guide
+      key={JSON.stringify([source?.id, source?.playback_url])}
+      {...props}
+    />
+  );
+}
+
+function Guide({ snapshot, orgId }: GuideProps) {
   const [error, setError] = useState("");
   const [active, setActive] = useState(0);
   const [segment, setSegment] = useState(true);
   const [finished, setFinished] = useState(false);
+  const [motion, setMotion] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
+  const pendingSeek = useRef<number | null>(null);
+  const playAttempt = useRef(0);
   const stepHeading = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const player = video.current;
-    return () => player?.pause();
+    if (!player) return;
+    const applySeek = () => {
+      if (pendingSeek.current !== null)
+        player.currentTime = pendingSeek.current;
+      pendingSeek.current = null;
+    };
+    player.addEventListener("loadedmetadata", applySeek);
+    return () => {
+      playAttempt.current++;
+      player.removeEventListener("loadedmetadata", applySeek);
+      player.pause();
+    };
   }, []);
   const current = snapshot.steps[active];
+  const recipe = !!snapshot.recipe;
+  const playable =
+    snapshot.source?.status === "ready" && !!snapshot.source.playback_url;
+  const hasPhoto =
+    !!current && canShowStepPhoto(current, recipe, orgId, snapshot.source);
+  const showPlayer = !recipe || !hasPhoto || motion;
   useEffect(() => {
     const player = video.current;
     if (!player || !current || !segment || finished) return;
@@ -40,40 +70,67 @@ export function CookingGuide({
       player.removeEventListener("play", seekInsideStep);
     };
   }, [current, segment, finished]);
+  function seek(ms: number) {
+    const player = video.current;
+    if (!player) return;
+    if (player.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      player.currentTime = ms / 1000;
+      pendingSeek.current = null;
+    } else {
+      pendingSeek.current = ms / 1000;
+    }
+  }
+  function pause() {
+    playAttempt.current++;
+    video.current?.pause();
+    setError("");
+  }
   function select(index: number, focus = false) {
+    pause();
+    setMotion(false);
     setFinished(false);
     setActive(index);
-    if (video.current) {
-      video.current.pause();
-      if (video.current.readyState >= HTMLMediaElement.HAVE_METADATA)
-        video.current.currentTime = snapshot.steps[index].start_ms / 1000;
-    }
+    seek(snapshot.steps[index].start_ms);
     if (focus) requestAnimationFrame(() => stepHeading.current?.focus());
   }
   async function play() {
     if (!video.current || !current) return;
+    const attempt = ++playAttempt.current;
     const step = current;
+    // Reveal the native player within this tap so mobile browsers can start it.
+    if (recipe && !motion) flushSync(() => setMotion(true));
+    setError("");
     setSegment(true);
     if (
+      (recipe && !motion) ||
       video.current.currentTime < step.start_ms / 1000 ||
       video.current.currentTime >= step.end_ms / 1000
     )
-      video.current.currentTime = step.start_ms / 1000;
+      seek(step.start_ms);
     try {
       await video.current.play();
     } catch {
+      if (attempt !== playAttempt.current) return;
       setError(
         "Не удалось запустить видео. Попробуйте кнопку воспроизведения в проигрывателе.",
       );
     }
   }
+  function jumpToFrame(ms: number) {
+    if (!current || !playable) return;
+    pause();
+    setMotion(true);
+    setSegment(ms >= current.start_ms && ms < current.end_ms);
+    seek(ms);
+    requestAnimationFrame(() => {
+      video.current?.focus({ preventScroll: true });
+      if (!recipe) video.current?.scrollIntoView({ block: "nearest" });
+    });
+  }
   return (
     <>
       {error && <ErrorBanner error={error} />}
-      {snapshot.recipe && (
-        <RecipeIngredients recipe={snapshot.recipe} checklist />
-      )}
-      <div className="reader-grid">
+      <div className={recipe ? "reader-grid cook-guide" : "reader-grid"}>
         <section className="reader-video">
           {finished && snapshot.recipe && (
             <div className="cook-complete" role="status">
@@ -95,57 +152,80 @@ export function CookingGuide({
               <p>{current.description}</p>
             </div>
           )}
-          <Video
-            source={snapshot.source}
-            videoRef={video}
-            onTimeUpdate={() => {
-              const player = video.current;
-              if (!player || !current || player.paused) return;
-              const ms = player.currentTime * 1000;
-              if (segment && ms >= current.end_ms) player.pause();
-              if (!segment && (ms < current.start_ms || ms >= current.end_ms)) {
-                const index = snapshot.steps.findIndex(
-                  (step) => ms >= step.start_ms && ms < step.end_ms,
-                );
-                if (index !== -1) setActive(index);
-              }
-            }}
-          />
-          <div className="playback-options">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={segment}
-                onChange={(e) => setSegment(e.target.checked)}
-              />
-              <span>Воспроизводить только этот шаг</span>
-            </label>
-            <span>
-              {current && `${time(current.start_ms)}–${time(current.end_ms)}`}
-            </span>
+          <div className="cook-media-video" hidden={!showPlayer}>
+            <Video
+              source={snapshot.source}
+              videoRef={video}
+              onTimeUpdate={() => {
+                const player = video.current;
+                if (!player || !current || player.paused) return;
+                const ms = player.currentTime * 1000;
+                if (segment && ms >= current.end_ms) player.pause();
+                if (
+                  !segment &&
+                  (ms < current.start_ms || ms >= current.end_ms)
+                ) {
+                  const index = snapshot.steps.findIndex(
+                    (step) => ms >= step.start_ms && ms < step.end_ms,
+                  );
+                  if (index !== -1) setActive(index);
+                }
+              }}
+            />
+            <div className="playback-options">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={segment}
+                  onChange={(e) => setSegment(e.target.checked)}
+                />
+                <span>Воспроизводить только этот шаг</span>
+              </label>
+              <span>
+                {current && `${time(current.start_ms)}–${time(current.end_ms)}`}
+              </span>
+            </div>
           </div>
           {current && (
             <div className="current-step">
-              <RecipeStepPhotos
-                step={current}
-                recipe={!!snapshot.recipe}
-                source={snapshot.source}
-                orgId={orgId}
-                onJump={(ms) => {
-                  if (video.current) {
-                    video.current.pause();
-                    video.current.currentTime = ms / 1000;
-                    video.current.scrollIntoView({ block: "nearest" });
-                  }
-                }}
-              />
-              <button className="button primary" onClick={() => void play()}>
-                <Icon name="play" size={17} />
-                Посмотреть этот шаг
-                <span className="button-time">
-                  {time(current.end_ms - current.start_ms)}
-                </span>
-              </button>
+              <div className="cook-step-picture" hidden={recipe && showPlayer}>
+                <RecipeStepPhotos
+                  key={current.id || active}
+                  step={current}
+                  recipe={recipe}
+                  oneAtATime={recipe}
+                  source={snapshot.source}
+                  orgId={orgId}
+                  onJump={jumpToFrame}
+                />
+              </div>
+              {playable &&
+                (recipe && motion && hasPhoto ? (
+                  <button
+                    className="button secondary cook-motion-button"
+                    onClick={() => {
+                      pause();
+                      setMotion(false);
+                    }}
+                  >
+                    <Icon name="back" size={16} /> Вернуться к фото
+                  </button>
+                ) : (
+                  <button
+                    className={
+                      recipe
+                        ? "button secondary cook-motion-button"
+                        : "button primary"
+                    }
+                    onClick={() => void play()}
+                  >
+                    <Icon name="play" size={17} />
+                    {recipe ? "Показать движение" : "Посмотреть этот шаг"}
+                    <span className="button-time">
+                      {time(current.end_ms - current.start_ms)}
+                    </span>
+                  </button>
+                ))}
               <div className="reader-step-nav">
                 <button
                   className="text-button"
@@ -160,7 +240,7 @@ export function CookingGuide({
                     className="button primary"
                     disabled={finished}
                     onClick={() => {
-                      video.current?.pause();
+                      pause();
                       setFinished(true);
                       requestAnimationFrame(() =>
                         document
@@ -186,6 +266,9 @@ export function CookingGuide({
           )}
         </section>
         <aside className="reader-outline">
+          {snapshot.recipe && (
+            <RecipeIngredients recipe={snapshot.recipe} checklist />
+          )}
           <div className="section-heading">
             <h2>{snapshot.recipe ? "Приготовление" : "По шагам"}</h2>
             <span className="small muted">

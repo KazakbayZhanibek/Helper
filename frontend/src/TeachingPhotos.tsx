@@ -112,6 +112,7 @@ export function TeachingPhotos({
   label,
   onJump,
   compact = false,
+  oneAtATime = false,
   captions = {},
 }: {
   frames: readonly TeachingPhotoFrame[];
@@ -119,10 +120,12 @@ export function TeachingPhotos({
   label: string;
   onJump?: (ms: number) => void;
   compact?: boolean;
+  oneAtATime?: boolean;
   captions?: Readonly<Record<string, string>>;
 }) {
   const [opened, setOpened] = useState<TeachingPhotoFrame | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const byId = new Map(frames.map((frame) => [frame.id, frame]));
   const references = [...new Set(ids)];
   const selected = references
@@ -137,10 +140,14 @@ export function TeachingPhotos({
       if (bTime === null) return -1;
       return aTime - bTime;
     });
-  const canExpand = compact && selected.length > 3;
-  const visible = canExpand && !expanded
-    ? [selected[0], selected[Math.floor((selected.length - 1) / 2)], selected[selected.length - 1]]
-    : selected;
+  const canExpand = !oneAtATime && compact && selected.length > 3;
+  const currentIndex = Math.min(photoIndex, Math.max(0, selected.length - 1));
+  let visible = selected;
+  if (oneAtATime) {
+    visible = selected.slice(currentIndex, currentIndex + 1);
+  } else if (canExpand && !expanded) {
+    visible = [selected[0], selected[Math.floor((selected.length - 1) / 2)], selected[selected.length - 1]];
+  }
   return (
     <div className="teaching-photos" aria-label={`Фото: ${label}`}>
       {selected.length > 0 && (
@@ -195,6 +202,27 @@ export function TeachingPhotos({
         >
           {expanded ? "Оставить три кадра" : `Показать все ${selected.length} кадров`}
         </button>
+      )}
+      {oneAtATime && selected.length > 1 && (
+        <div className="cook-photo-switch">
+          <button
+            type="button"
+            className="text-button"
+            disabled={currentIndex === 0}
+            onClick={() => setPhotoIndex(currentIndex - 1)}
+          >
+            Предыдущее фото
+          </button>
+          <span aria-live="polite">{currentIndex + 1} из {selected.length}</span>
+          <button
+            type="button"
+            className="text-button"
+            disabled={currentIndex === selected.length - 1}
+            onClick={() => setPhotoIndex(currentIndex + 1)}
+          >
+            Следующее фото
+          </button>
+        </div>
       )}
       {selected.length < references.length && (
         <p className="field-hint">
