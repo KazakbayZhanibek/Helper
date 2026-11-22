@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { RecipeInputs } from "./editorDraft";
 import { countNoun } from "./format";
 import type { Recipe } from "./types";
@@ -57,12 +56,14 @@ export function RecipeEditor({
 
 export function RecipeIngredients({
   recipe,
-  checklist = false,
+  checklist,
 }: {
   recipe: Recipe;
-  checklist?: boolean;
+  checklist?: {
+    prepared: number[];
+    onCheck: (index: number, checked: boolean) => void;
+  };
 }) {
-  const [prepared, setPrepared] = useState<number[]>([]);
   return (
     <section className="recipe-ingredients" aria-label="Ингредиенты рецепта">
       <div className="section-heading">
@@ -76,7 +77,8 @@ export function RecipeIngredients({
       </div>
       {checklist && (
         <p className="ingredient-count" aria-live="polite">
-          Подготовлено {prepared.length} из {recipe.ingredients.length}
+          Подготовлено {checklist.prepared.length} из{" "}
+          {recipe.ingredients.length}
         </p>
       )}
       <ul className={checklist ? "ingredient-checklist" : undefined}>
@@ -86,15 +88,10 @@ export function RecipeIngredients({
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={prepared.includes(index)}
-                  onChange={(event) => {
-                    const checked = event.target.checked;
-                    setPrepared((items) =>
-                      checked
-                        ? [...items, index]
-                        : items.filter((item) => item !== index),
-                    );
-                  }}
+                  checked={checklist.prepared.includes(index)}
+                  onChange={(event) =>
+                    checklist.onCheck(index, event.target.checked)
+                  }
                 />
                 <span>{ingredient}</span>
               </label>

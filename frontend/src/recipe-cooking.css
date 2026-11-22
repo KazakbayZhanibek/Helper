@@ -39,6 +39,18 @@
   overflow-wrap: anywhere;
 }
 
+.cook-progress-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 12px;
+}
+
+.cook-progress-heading .text-button {
+  min-height: 44px;
+}
+
 .cook-step-heading p {
   margin: 0;
   line-height: 1.65;

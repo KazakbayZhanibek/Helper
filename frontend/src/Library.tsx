@@ -1,4 +1,5 @@
 import { useVideoUpload, UploadProgress, VideoFileFields } from "./Upload";
+import { FavoriteButton } from "./FavoriteButton";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, libraryPath, instructionPath, orgApi, requestKey } from "./api";
 import { countNoun } from "./format";
@@ -28,21 +29,33 @@ export function Library({
 }) {
   const initial = new URLSearchParams(location.search);
   const [query, setQuery] = useState(initial.get("q") || "");
-  const [status, setStatus] = useState(
-    org.role === "reader" ? "" : initial.get("status") || "",
-  );
   const [archive, setArchive] = useState(initial.get("kind") === "legacy");
+  const [favorites, setFavorites] = useState(
+    !archive && initial.get("favorites") === "1",
+  );
+  const [status, setStatus] = useState(
+    org.role === "reader" || favorites ? "" : initial.get("status") || "",
+  );
   const kind = archive ? "legacy" : "recipe";
   const [language, setLanguage] = useState(initial.get("language") || "");
   const [items, setItems] = useState<InstructionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [favoriteError, setFavoriteError] = useState("");
+  const [total, setTotal] = useState(0);
   const [retry, setRetry] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [moreBusy, setMoreBusy] = useState(false);
   const reader = org.role === "reader";
   const searchGeneration = useRef(0);
   const moreAbort = useRef<AbortController | null>(null);
+  const filters = new URLSearchParams();
+  if (query.trim()) filters.set("q", query.trim());
+  if (status) filters.set("status", status);
+  if (language) filters.set("language", language);
+  if (archive) filters.set("kind", "legacy");
+  if (favorites) filters.set("favorites", "1");
+  const search = filters.toString();
   useEffect(() => {
     searchGeneration.current += 1;
     moreAbort.current?.abort();
@@ -50,26 +63,25 @@ export function Library({
     const abort = new AbortController();
     setLoading(true);
     setError("");
+    setFavoriteError("");
     setCursor(null);
+    const params = new URLSearchParams(search);
+    history.replaceState(
+      history.state,
+      "",
+      libraryPath(org.id) + (params.size ? "?" + params : ""),
+    );
     const timer = setTimeout(() => {
-      const params = new URLSearchParams();
-      if (query.trim()) params.set("q", query.trim());
-      if (status) params.set("status", status);
-      if (language) params.set("language", language);
-      if (archive) params.set("kind", kind);
-      history.replaceState(
-        {},
-        "",
-        libraryPath(org.id) + (params.size ? "?" + params : ""),
-      );
       params.set("kind", kind);
-      api<{ items: InstructionSummary[]; next_cursor: string | null }>(
-        `${orgApi(org.id)}/instructions?${params}`,
-        { signal: abort.signal },
-      )
+      api<{
+        items: InstructionSummary[];
+        next_cursor: string | null;
+        total: number;
+      }>(`${orgApi(org.id)}/instructions?${params}`, { signal: abort.signal })
         .then((r) => {
           if (abort.signal.aborted) return;
           setItems(r.items);
+          setTotal(r.total);
           setCursor(r.next_cursor);
         })
         .catch((e) => {
@@ -84,7 +96,7 @@ export function Library({
       abort.abort();
       moreAbort.current?.abort();
     };
-  }, [query, status, language, org.id, retry, kind, archive]);
+  }, [search, org.id, retry, kind]);
   async function more() {
     if (!cursor || moreBusy) return;
     const generation = searchGeneration.current;
@@ -92,10 +104,9 @@ export function Library({
     moreAbort.current = abort;
     setMoreBusy(true);
     try {
-      const params = new URLSearchParams({ cursor, kind });
-      if (query.trim()) params.set("q", query.trim());
-      if (status) params.set("status", status);
-      if (language) params.set("language", language);
+      const params = new URLSearchParams(search);
+      params.set("cursor", cursor);
+      params.set("kind", kind);
       const r = await api<{
         items: InstructionSummary[];
         next_cursor: string | null;
@@ -111,6 +122,7 @@ export function Library({
       if (generation === searchGeneration.current) setMoreBusy(false);
     }
   }
+  const displayedGeneration = searchGeneration.current;
   return (
     <>
       <div className="page-heading recipe-library-heading">
@@ -130,7 +142,8 @@ export function Library({
             !!query ||
             !!status ||
             !!language ||
-            archive) && (
+            archive ||
+            favorites) && (
             <button
               className="button primary"
               onClick={() => navigate(libraryPath(org.id) + "/new")}
@@ -163,6 +176,19 @@ export function Library({
             </button>
           )}
         </div>
+        {!archive && (
+          <button
+            className="favorite-filter"
+            type="button"
+            aria-pressed={favorites}
+            onClick={() => {
+              setFavorites(!favorites);
+              setStatus("");
+            }}
+          >
+            <Icon name="bookmark" size={17} /> Избранное
+          </button>
+        )}
         <details className="library-options">
           <summary>Параметры поиска</summary>
           <div>
@@ -172,6 +198,7 @@ export function Library({
                 value={archive ? "legacy" : "recipe"}
                 onChange={(e) => {
                   setArchive(e.target.value === "legacy");
+                  setFavorites(false);
                   setStatus("");
                 }}
               >
@@ -194,7 +221,7 @@ export function Library({
           </div>
         </details>
       </div>
-      {!reader && (
+      {!reader && !favorites && (
         <div className="tabs" role="group" aria-label="Статус публикации">
           {[
             ["", archive ? "Все материалы" : "Все рецепты"],
@@ -213,6 +240,7 @@ export function Library({
           ))}
         </div>
       )}
+      {favoriteError && <ErrorBanner error={favoriteError} />}
       {error ? (
         <ErrorBanner error={error}>
           <button
@@ -234,20 +262,24 @@ export function Library({
           <h2>
             {query || status || language
               ? "Ничего не нашлось"
-              : archive
-                ? "Архив пуст"
-                : reader
-                  ? "Рецепты появятся здесь"
-                  : "Добавьте первый рецепт"}
+              : favorites
+                ? "В избранном пока нет рецептов"
+                : archive
+                  ? "Архив пуст"
+                  : reader
+                    ? "Рецепты появятся здесь"
+                    : "Добавьте первый рецепт"}
           </h2>
           <p>
             {query || status || language
               ? "Измените запрос или сбросьте фильтры."
-              : archive
-                ? "Прежние инструкции будут доступны в этом разделе."
-                : reader
-                  ? "Здесь появятся рецепты, которые опубликует ваша кухня."
-                  : "Начните с названия блюда. Видео и ингредиенты можно добавить позже."}
+              : favorites
+                ? "Нажмите на закладку у блюда, которое хотите приготовить ещё раз."
+                : archive
+                  ? "Прежние инструкции будут доступны в этом разделе."
+                  : reader
+                    ? "Здесь появятся рецепты, которые опубликует ваша кухня."
+                    : "Начните с названия блюда. Видео и ингредиенты можно добавить позже."}
           </p>
           {query || status || language ? (
             <button
@@ -259,6 +291,14 @@ export function Library({
               }}
             >
               Сбросить фильтры
+            </button>
+          ) : favorites ? (
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => setFavorites(false)}
+            >
+              Все рецепты
             </button>
           ) : (
             !reader &&
@@ -277,9 +317,9 @@ export function Library({
         <>
           <div className="results-line">
             <span>
-              {items.length}{" "}
+              {total}{" "}
               {countNoun(
-                items.length,
+                total,
                 archive
                   ? ["материал", "материала", "материалов"]
                   : ["рецепт", "рецепта", "рецептов"],
@@ -362,6 +402,41 @@ export function Library({
                     </div>
                   </div>
                 </button>
+                {!archive && typeof item.favorite === "boolean" && (
+                  <FavoriteButton
+                    compact
+                    orgId={org.id}
+                    id={item.id}
+                    title={item.title}
+                    saved={item.favorite}
+                    onError={setFavoriteError}
+                    onChange={(saved) => {
+                      if (displayedGeneration !== searchGeneration.current) {
+                        setRetry((n) => n + 1);
+                        return;
+                      }
+                      setFavoriteError("");
+                      if (favorites && !saved) {
+                        // Reload paged results because removing a row shifts the server cursor.
+                        if (cursor || moreBusy) setRetry((n) => n + 1);
+                        else {
+                          setItems((rows) =>
+                            rows.filter((row) => row.id !== item.id),
+                          );
+                          setTotal((n) => Math.max(0, n - 1));
+                        }
+                      } else {
+                        setItems((rows) =>
+                          rows.map((row) =>
+                            row.id === item.id
+                              ? { ...row, favorite: saved }
+                              : row,
+                          ),
+                        );
+                      }
+                    }}
+                  />
+                )}
               </article>
             ))}
           </div>

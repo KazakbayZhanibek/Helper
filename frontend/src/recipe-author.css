@@ -1,0 +1,36 @@
+.recipe-step-marker {
+  min-width: 0;
+  margin: 14px 0 18px;
+  padding: 12px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.recipe-step-marker legend {
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+.recipe-step-marker p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.recipe-step-marker .button-row {
+  flex-wrap: wrap;
+}
+.recipe-step-marker .button,
+.recipe-step-marker .text-button {
+  min-height: 44px;
+  white-space: normal;
+}
+@media (max-width: 650px) {
+  .product-shell .editor-header .button-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .product-shell .editor-header .button-row .button {
+    white-space: normal;
+    font-size: 14px;
+  }
+}

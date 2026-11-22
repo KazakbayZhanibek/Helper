@@ -13,6 +13,7 @@ urlpatterns = [
     path('health/live', views.HealthView.as_view()),
     path('api/v1/orgs/<uuid:org_id>/instructions', views.InstructionsView.as_view()),
     path('api/v1/orgs/<uuid:org_id>/instructions/<uuid:instruction_id>', views.InstructionView.as_view()),
+    path('api/v1/orgs/<uuid:org_id>/instructions/<uuid:instruction_id>/favorite', views.FavoriteView.as_view()),
     path('api/v1/orgs/<uuid:org_id>/instructions/<uuid:instruction_id>/working-copy', views.WorkingCopyView.as_view()),
     path('api/v1/orgs/<uuid:org_id>/instructions/<uuid:instruction_id>/versions', views.VersionsView.as_view()),
     path('api/v1/orgs/<uuid:org_id>/instructions/<uuid:instruction_id>/versions/<uuid:version_id>', views.VersionsView.as_view()),

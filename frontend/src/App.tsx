@@ -47,7 +47,14 @@ export default function App() {
     )
       return;
     dirty.current = false;
-    history.pushState({}, "", next);
+    const fromBook = /^\/o\/[^/]+\/(recipes|instructions)$/.test(
+      location.pathname,
+    );
+    history.pushState(
+      fromBook ? { fromBook: location.pathname + location.search } : {},
+      "",
+      next,
+    );
     setPath(new URL(next, location.origin).pathname);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
@@ -384,7 +391,13 @@ export default function App() {
                 />
               )
             ) : id ? (
-              <Reader org={org} id={id} navigate={navigate} />
+              <Reader
+                key={`${session.user.id}:${org.id}:${id}`}
+                userId={session.user.id}
+                org={org}
+                id={id}
+                navigate={navigate}
+              />
             ) : (
               <>
                 {session.user.email_verified === false && (

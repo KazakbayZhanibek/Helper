@@ -4,7 +4,8 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.core.cache import cache
-from django.db.models import Count, Q
+from django.db import transaction
+from django.db.models import Count, Exists, OuterRef, Q
 from django.http import StreamingHttpResponse, HttpResponse
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
@@ -12,7 +13,7 @@ from django.views.decorators.csrf import csrf_protect
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Membership, WorkingCopy, MediaAsset
+from .models import Membership, WorkingCopy, MediaAsset, RecipeFavorite
 from . import services as s
 
 
@@ -70,7 +71,12 @@ class InstructionsView(APIView):
     def get(self, request, org_id):
         member = s.membership(request.user, org_id)
         query = member.organization.instruction_set.filter(lifecycle='active')
-        reader = member.role == 'reader'
+        favorites = request.query_params.get('favorites') == '1'
+        reader = member.role == 'reader' or favorites
+        personal_marks = RecipeFavorite.objects.filter(user_id=request.user.pk, instruction_id=OuterRef('pk'))
+        query = query.annotate(is_favorite=Exists(personal_marks))
+        if favorites:
+            query = query.filter(is_favorite=True, current_version__snapshot__has_key='recipe')
         if reader:
             query = query.filter(current_version__isnull=False)
 
@@ -121,7 +127,7 @@ class InstructionsView(APIView):
         if not reader:
             query = query.annotate(working_step_count=Count('working_copy__steps'))
         page = query.order_by('-updated_at', 'id')[offset:offset + page_size] if offset < total else ()
-        return Response({'items': [s.summary(item, reader) for item in page], 'next_cursor': str(offset + page_size) if offset + page_size < total else None, 'total': total})
+        return Response({'items': [recipe_summary(item, reader, item.is_favorite) for item in page], 'next_cursor': str(offset + page_size) if offset + page_size < total else None, 'total': total})
     def post(self, request, org_id):
         member = s.membership(request.user, org_id, s.WRITERS)
         data, status = s.idempotent(request, member, lambda: s.create_instruction(member, request.data))
@@ -135,11 +141,39 @@ def working_response(data, status=200):
     return response
 
 
+def is_published_recipe(instruction):
+    version = instruction.current_version
+    return version is not None and version.snapshot.get('recipe') is not None
+
+
+def recipe_summary(instruction, reader, favorite):
+    return {**s.summary(instruction, reader), 'favorite': favorite if is_published_recipe(instruction) else None}
+
+
+class FavoriteView(APIView):
+    @transaction.atomic
+    def put(self, request, org_id, instruction_id):
+        member = s.membership(request.user, org_id)
+        instruction = s.instruction_for(member, instruction_id, lock=True)
+        if not is_published_recipe(instruction):
+            s.fail('NOT_PUBLISHED_RECIPE', 'В избранное можно добавить опубликованный рецепт.', 409)
+        RecipeFavorite.objects.get_or_create(user=request.user, instruction=instruction)
+        return Response({'favorite': True})
+
+    @transaction.atomic
+    def delete(self, request, org_id, instruction_id):
+        member = s.membership(request.user, org_id)
+        instruction = s.instruction_for(member, instruction_id, lock=True)
+        RecipeFavorite.objects.filter(user=request.user, instruction=instruction).delete()
+        return Response({'favorite': False})
+
+
 class InstructionView(APIView):
     def get(self, request, org_id, instruction_id):
         member = s.membership(request.user, org_id)
         instruction = s.instruction_for(member, instruction_id)
-        return Response({**s.summary(instruction, member.role == 'reader'), 'publication': s.version_data(instruction.current_version), 'working_copy': None if member.role == 'reader' else s.working_data(instruction.working_copy, member)})
+        favorite = RecipeFavorite.objects.filter(user=request.user, instruction=instruction).exists()
+        return Response({**recipe_summary(instruction, member.role == 'reader', favorite), 'publication': s.version_data(instruction.current_version), 'working_copy': None if member.role == 'reader' else s.working_data(instruction.working_copy, member)})
 
 
     def delete(self, request, org_id, instruction_id):

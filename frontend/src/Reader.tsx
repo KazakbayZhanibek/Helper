@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { countNoun } from "./format";
 import { CookingGuide } from "./CookingGuide";
+import { FavoriteButton } from "./FavoriteButton";
+import { cookingProgressKey } from "./cookingProgress";
 import {
   api,
   ApiError,
@@ -28,10 +30,12 @@ import type {
 export function Reader({
   org,
   id,
+  userId,
   navigate,
 }: {
   org: Organization;
   id: string;
+  userId: string;
   navigate: Navigate;
 }) {
   const [item, setItem] = useState<Instruction | null>(null);
@@ -44,6 +48,10 @@ export function Reader({
   const [reason, setReason] = useState("");
   const [copied, setCopied] = useState(false);
   const base = instructionApi(org.id, id);
+  const book = libraryPath(org.id);
+  const from = window.history.state?.fromBook;
+  const returnToBook =
+    typeof from === "string" && from.split("?")[0] === book ? from : book;
   const isWriter = org.role !== "reader";
   const isReviewer = org.role === "admin" || org.role === "reviewer";
   const load = useCallback(async () => {
@@ -136,10 +144,7 @@ export function Reader({
   if (!item?.publication)
     return (
       <>
-        <button
-          className="back-link"
-          onClick={() => navigate(libraryPath(org.id))}
-        >
+        <button className="back-link" onClick={() => navigate(returnToBook)}>
           <Icon name="back" />
           Библиотека
         </button>
@@ -166,10 +171,7 @@ export function Reader({
   const { snapshot } = version;
   return (
     <>
-      <button
-        className="back-link"
-        onClick={() => navigate(libraryPath(org.id))}
-      >
+      <button className="back-link" onClick={() => navigate(returnToBook)}>
         <Icon name="back" size={17} />
         Книга рецептов
       </button>
@@ -197,6 +199,18 @@ export function Reader({
             <Icon name="shield" size={16} />
             Проверил: {version.published_by}
           </span>
+          {typeof item.favorite === "boolean" && (
+            <FavoriteButton
+              orgId={org.id}
+              id={id}
+              title={snapshot.title}
+              saved={item.favorite}
+              onChange={(favorite) =>
+                setItem((previous) => previous && { ...previous, favorite })
+              }
+              onError={setError}
+            />
+          )}
         </div>
       </div>
       {error && <ErrorBanner error={error} />}{" "}
@@ -215,7 +229,16 @@ export function Reader({
           </div>
         </div>
       )}
-      <CookingGuide key={version.id} snapshot={snapshot} orgId={org.id} />
+      <CookingGuide
+        key={version.id}
+        snapshot={snapshot}
+        orgId={org.id}
+        progressKey={
+          snapshot.recipe
+            ? cookingProgressKey(userId, org.id, id, version.id)
+            : undefined
+        }
+      />
       <div className="reader-actions">
         <button
           className="button secondary"

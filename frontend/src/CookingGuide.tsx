@@ -4,33 +4,80 @@ import { RecipeIngredients } from "./RecipeDetails";
 import { canShowStepPhoto, RecipeStepPhotos } from "./RecipeStepPhotos";
 import { ErrorBanner, Icon, Video, time } from "./components";
 import { countNoun } from "./format";
+import {
+  emptyCookingProgress,
+  hasCookingProgress,
+  openCookingProgress,
+  type CookingProgress,
+} from "./cookingProgress";
 import type { Version } from "./types";
 
 type GuideProps = {
   snapshot: Version["snapshot"];
   orgId?: string;
+  progressKey?: string;
 };
 
 export function CookingGuide(props: GuideProps) {
   const source = props.snapshot.source;
   return (
     <Guide
-      key={JSON.stringify([source?.id, source?.playback_url])}
+      key={JSON.stringify([
+        props.progressKey,
+        source?.id,
+        source?.playback_url,
+      ])}
       {...props}
     />
   );
 }
 
-function Guide({ snapshot, orgId }: GuideProps) {
+function Guide({ snapshot, orgId, progressKey }: GuideProps) {
+  const [store] = useState(() =>
+    openCookingProgress(
+      progressKey,
+      snapshot.steps.length,
+      snapshot.recipe?.ingredients.length || 0,
+      () => window.localStorage,
+    ),
+  );
+  const [progress, setProgress] = useState(store.read);
+  const [resumed, setResumed] = useState(
+    () => !!progressKey && hasCookingProgress(progress),
+  );
+  const { active, finished } = progress;
   const [error, setError] = useState("");
-  const [active, setActive] = useState(0);
   const [segment, setSegment] = useState(true);
-  const [finished, setFinished] = useState(false);
   const [motion, setMotion] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const pendingSeek = useRef<number | null>(null);
   const playAttempt = useRef(0);
   const stepHeading = useRef<HTMLDivElement>(null);
+  function updateProgress(
+    change: (previous: CookingProgress) => CookingProgress,
+  ) {
+    setResumed(false);
+    setProgress(store.update(change));
+  }
+  useEffect(() => {
+    if (!progressKey) return;
+    const sync = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== progressKey) return;
+      const next = store.read();
+      if (active !== next.active || finished !== next.finished) {
+        video.current?.pause();
+        playAttempt.current++;
+        pendingSeek.current = null;
+        setSegment(true);
+        setMotion(false);
+        setError("");
+      }
+      setResumed(false);
+      setProgress(next);
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, [active, finished, progressKey, store]);
   useEffect(() => {
     const player = video.current;
     if (!player) return;
@@ -88,10 +135,21 @@ function Guide({ snapshot, orgId }: GuideProps) {
   function select(index: number, focus = false) {
     pause();
     setMotion(false);
-    setFinished(false);
-    setActive(index);
+    updateProgress((previous) => ({
+      ...previous,
+      active: index,
+      finished: false,
+    }));
     seek(snapshot.steps[index].start_ms);
     if (focus) requestAnimationFrame(() => stepHeading.current?.focus());
+  }
+  function restart() {
+    pause();
+    setSegment(true);
+    setMotion(false);
+    updateProgress(() => emptyCookingProgress);
+    if (snapshot.steps.length) seek(snapshot.steps[0].start_ms);
+    requestAnimationFrame(() => stepHeading.current?.focus());
   }
   async function play() {
     if (!video.current || !current) return;
@@ -130,24 +188,39 @@ function Guide({ snapshot, orgId }: GuideProps) {
   return (
     <>
       {error && <ErrorBanner error={error} />}
+      {progressKey && hasCookingProgress(progress) && !store.canPersist() && (
+        <p role="status" className="field-hint">
+          Браузер не смог сохранить прогресс. Отметки доступны, пока эта вкладка
+          открыта.
+        </p>
+      )}
       <div className={recipe ? "reader-grid cook-guide" : "reader-grid"}>
         <section className="reader-video">
           {finished && snapshot.recipe && (
             <div className="cook-complete" role="status">
               <h2>Приготовление завершено</h2>
-              <button
-                className="button secondary"
-                onClick={() => select(0, true)}
-              >
-                Вернуться к первому шагу
+              <button className="button secondary" onClick={restart}>
+                Приготовить ещё раз
               </button>
             </div>
           )}
           {current && (
             <div className="cook-step-heading" ref={stepHeading} tabIndex={-1}>
-              <span className="eyebrow">
-                Шаг {active + 1} из {snapshot.steps.length}
-              </span>
+              <div className="cook-progress-heading">
+                <span className="eyebrow">
+                  {resumed && !finished ? "Продолжаем с шага" : "Шаг"}{" "}
+                  {active + 1} из {snapshot.steps.length}
+                </span>
+                {recipe && !finished && hasCookingProgress(progress) && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={restart}
+                  >
+                    Начать сначала
+                  </button>
+                )}
+              </div>
               <h2>{current.title}</h2>
               <p>{current.description}</p>
             </div>
@@ -168,7 +241,13 @@ function Guide({ snapshot, orgId }: GuideProps) {
                   const index = snapshot.steps.findIndex(
                     (step) => ms >= step.start_ms && ms < step.end_ms,
                   );
-                  if (index !== -1) setActive(index);
+                  if (index !== -1 && index !== active) {
+                    updateProgress((previous) => ({
+                      ...previous,
+                      active: index,
+                      finished: false,
+                    }));
+                  }
                 }
               }}
             />
@@ -241,7 +320,11 @@ function Guide({ snapshot, orgId }: GuideProps) {
                     disabled={finished}
                     onClick={() => {
                       pause();
-                      setFinished(true);
+                      updateProgress((previous) => ({
+                        ...previous,
+                        active,
+                        finished: true,
+                      }));
                       requestAnimationFrame(() =>
                         document
                           .querySelector(".cook-complete")
@@ -267,7 +350,20 @@ function Guide({ snapshot, orgId }: GuideProps) {
         </section>
         <aside className="reader-outline">
           {snapshot.recipe && (
-            <RecipeIngredients recipe={snapshot.recipe} checklist />
+            <RecipeIngredients
+              recipe={snapshot.recipe}
+              checklist={{
+                prepared: progress.prepared,
+                onCheck: (index, checked) =>
+                  updateProgress((previous) => {
+                    const prepared = previous.prepared.filter(
+                      (value) => value !== index,
+                    );
+                    if (checked) prepared.push(index);
+                    return { ...previous, prepared };
+                  }),
+              }}
+            />
           )}
           <div className="section-heading">
             <h2>{snapshot.recipe ? "Приготовление" : "По шагам"}</h2>

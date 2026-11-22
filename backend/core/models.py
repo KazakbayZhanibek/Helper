@@ -90,6 +90,14 @@ class Instruction(TenantEntity):
     published_search_text = models.TextField(default='')
 
 
+class RecipeFavorite(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    instruction = models.ForeignKey(Instruction, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'instruction'], name='unique_user_recipe_favorite')]
+
+
 class WorkingCopy(TenantEntity):
     instruction = models.OneToOneField(Instruction, on_delete=models.CASCADE, related_name='working_copy')
     revision = models.PositiveIntegerField(default=1)

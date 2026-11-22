@@ -9,9 +9,11 @@ import { UploadCard } from "./Upload";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
+  type RefObject,
 } from "react";
 import {
   api,
@@ -40,30 +42,145 @@ import {
   type DraftStep,
 } from "./editorDraft";
 import { stepWarningMessages } from "./visual";
-function validation(form: Draft): string[] {
-  const errors: string[] = [];
+import "./recipe-author.css";
+
+type ClipRange = { start: number; end: number };
+
+function StepMarker({
+  video,
+  duration,
+  disabled,
+  onAdd,
+}: {
+  video: RefObject<HTMLVideoElement | null>;
+  duration: number | null;
+  disabled: boolean;
+  onAdd: (range: ClipRange) => void;
+}) {
+  const [start, setStart] = useState<number | null>(null);
+  const [message, setMessage] = useState("");
+  function mark() {
+    const player = video.current;
+    if (
+      !player ||
+      player.readyState < HTMLMediaElement.HAVE_METADATA ||
+      !Number.isFinite(player.duration)
+    ) {
+      setMessage("Дождитесь загрузки видео и повторите.");
+      return;
+    }
+    const last = Math.min(
+      Math.round(player.duration * 1000),
+      duration ?? Infinity,
+    );
+    const moment = Math.min(Math.round(player.currentTime * 1000), last);
+    if (start === null) {
+      if (moment >= last) {
+        setMessage("Перемотайте запись к началу действия.");
+        return;
+      }
+      setStart(moment);
+      setMessage("");
+      return;
+    }
+    if (moment <= start) {
+      setMessage("Воспроизведите видео или перемотайте его до конца действия.");
+      return;
+    }
+    player.pause();
+    onAdd({ start, end: moment });
+    setStart(null);
+    setMessage("");
+  }
+  return (
+    <fieldset className="recipe-step-marker" disabled={disabled}>
+      <legend>Шаг из видео</legend>
+      <p aria-live="polite">
+        {message ||
+          (start === null
+            ? "Найдите начало действия в записи."
+            : `Начало — ${formatMsExact(start)}. Найдите конец действия.`)}
+      </p>
+      <div className="button-row">
+        <button type="button" className="button secondary" onClick={mark}>
+          <Icon name={start === null ? "clock" : "plus"} size={16} />
+          {start === null ? "Отметить начало" : "Добавить шаг до этого момента"}
+        </button>
+        {start !== null && (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setStart(null);
+              setMessage("");
+            }}
+          >
+            Сбросить отметку
+          </button>
+        )}
+      </div>
+    </fieldset>
+  );
+}
+type AuthorTask = { label: string; target: string };
+type Issue = AuthorTask & { message: string };
+
+function validation(form: Draft): Issue[] {
+  const errors: Issue[] = [];
+  function issue(target: string, label: string, message: string) {
+    errors.push({ target, label, message });
+  }
   if (form.title.trim().length < 3)
-    errors.push("Название должно содержать не менее 3 символов.");
+    issue(
+      "#recipe-title",
+      "Уточнить название",
+      "Название должно содержать не менее 3 символов.",
+    );
   const recipe = recipeFromInputs(form);
   if (!recipe && form.purpose.trim().length < 10)
-    errors.push("Опишите результат хотя бы в 10 символах.");
+    issue(
+      "#recipe-purpose",
+      "Описать результат",
+      "Опишите результат хотя бы в 10 символах.",
+    );
   if (recipe) {
     if (recipe.ingredients.length > 30)
-      errors.push("Добавьте не больше 30 ингредиентов.");
+      issue(
+        ".recipe-editor textarea",
+        "Уточнить ингредиенты",
+        "Добавьте не больше 30 ингредиентов.",
+      );
     if (recipe.ingredients.some((line) => [...line].length > 160))
-      errors.push("Сократите строку ингредиента до 160 символов.");
+      issue(
+        ".recipe-editor textarea",
+        "Уточнить ингредиенты",
+        "Сократите строку ингредиента до 160 символов.",
+      );
     if (
       recipe.servings !== null &&
       (!Number.isInteger(recipe.servings) ||
         recipe.servings < 1 ||
         recipe.servings > 1000)
     )
-      errors.push("Укажите от 1 до 1000 порций или оставьте поле пустым.");
+      issue(
+        ".recipe-servings input",
+        "Уточнить порции",
+        "Укажите от 1 до 1000 порций или оставьте поле пустым.",
+      );
   }
   form.steps.forEach((s, i) => {
     if (s.title.trim().length < 3)
-      errors.push(`Шаг ${i + 1}: добавьте название от 3 символов.`);
-    if (!s.description.trim()) errors.push(`Шаг ${i + 1}: опишите действие.`);
+      issue(
+        `#step-title-${i}`,
+        `Назвать шаг ${i + 1}`,
+        `Шаг ${i + 1}: добавьте название от 3 символов.`,
+      );
+    if (!s.description.trim())
+      issue(
+        `#step-description-${i}`,
+        `Описать шаг ${i + 1}`,
+        `Шаг ${i + 1}: опишите действие.`,
+      );
     const start = parseMs(s.startInput),
       end = parseMs(s.endInput);
     if (
@@ -72,7 +189,9 @@ function validation(form: Draft): string[] {
       end <= start ||
       start < 0
     )
-      errors.push(
+      issue(
+        !Number.isFinite(start) ? `#step-start-${i}` : `#step-end-${i}`,
+        `Уточнить время шага ${i + 1}`,
         `Шаг ${i + 1}: укажите начало и конец в формате 00:00.0, конец позже начала.`,
       );
     else if (
@@ -80,11 +199,26 @@ function validation(form: Draft): string[] {
       form.source.duration_ms !== null &&
       end > form.source.duration_ms
     )
-      errors.push(
+      issue(
+        `#step-end-${i}`,
+        `Уточнить время шага ${i + 1}`,
         `Шаг ${i + 1}: конец выходит за длительность видео ${time(form.source.duration_ms)}.`,
       );
   });
   return errors;
+}
+
+function nextReviewTask(form: Draft): AuthorTask | null {
+  const recipe = recipeFromInputs(form);
+  if (!recipe) return null;
+  if (!form.source) return { label: "Добавить видео", target: "#recipe-video" };
+  if (form.source.status !== "ready")
+    return { label: "Проверить видео", target: "#recipe-video" };
+  if (!recipe.ingredients.length)
+    return { label: "Добавить ингредиенты", target: ".recipe-editor textarea" };
+  if (!form.steps.length)
+    return { label: "Выбрать фрагмент", target: "#recipe-video video" };
+  return validation(form)[0] ?? null;
 }
 const confirmationLabels = {
   order: "Порядок действий правильный",
@@ -136,6 +270,12 @@ export function Editor({
   );
   const [savedNotice, setSavedNotice] = useState("");
   const video = useRef<HTMLVideoElement>(null);
+  const addedStep = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (addedStep.current === null) return;
+    document.getElementById(`step-title-${addedStep.current}`)?.focus();
+    addedStep.current = null;
+  }, [form?.steps.length]);
   const inFlight = useRef(false);
   const publishKey = useRef(requestKey());
   const base = instructionApi(org.id, id);
@@ -187,7 +327,7 @@ export function Editor({
     if (!form || inFlight.current || conflict) return null;
     const errors = validation(form);
     if (errors.length) {
-      if (explicit) setValidationErrors(errors);
+      if (explicit) setValidationErrors(errors.map((e) => e.message));
       return null;
     }
     inFlight.current = true;
@@ -271,7 +411,7 @@ export function Editor({
   }
   async function submitReview() {
     if (!form) return;
-    const errors = validation(form);
+    const errors = validation(form).map((e) => e.message);
     if (!form.steps.length) errors.push("Добавьте хотя бы один шаг.");
     const recipe = recipeFromInputs(form);
     if (recipe && !recipe.ingredients.length)
@@ -324,13 +464,14 @@ export function Editor({
     setSavedNotice("");
     setValidationErrors([]);
   }
-  function addStep() {
-    if (!form) return;
-    const start = Math.floor((video.current?.currentTime || 0) * 1000);
-    const end = Math.min(
-      start + 5000,
-      form.source?.duration_ms || start + 5000,
-    );
+  function addStep(range?: ClipRange) {
+    if (!form || form.steps.length >= 30) return;
+    const position = Math.floor((video.current?.currentTime || 0) * 1000);
+    const end =
+      range?.end ??
+      Math.min(position + 5000, form.source?.duration_ms ?? position + 5000);
+    const start =
+      range?.start ?? (position < end ? position : Math.max(0, end - 5000));
     const step: DraftStep = {
       id: null,
       ordinal: form.steps.length + 1,
@@ -345,12 +486,9 @@ export function Editor({
       checked_by: null,
       evidence_segment_ids: [],
     };
+    addedStep.current = form.steps.length;
     setForm({ ...form, steps: [...form.steps, step] });
     setSavedNotice("");
-    setTimeout(
-      () => document.getElementById(`step-title-${form.steps.length}`)?.focus(),
-      0,
-    );
   }
   function move(index: number, delta: number) {
     if (!form) return;
@@ -390,6 +528,7 @@ export function Editor({
   const checked = form.steps.filter((s) => s.checked).length;
   const recipe = recipeFromInputs(form);
   const reviewLabels = recipe ? recipeConfirmationLabels : confirmationLabels;
+  const nextTask = editable ? nextReviewTask(form) : null;
   return (
     <>
       <button
@@ -432,14 +571,25 @@ export function Editor({
               </button>
               <button
                 className="button primary"
-                onClick={() => void submitReview()}
+                onClick={() => {
+                  if (nextTask) {
+                    const target = document.querySelector<HTMLElement>(
+                      nextTask.target,
+                    );
+                    target?.focus({ preventScroll: true });
+                    target?.scrollIntoView({ block: "center" });
+                  } else {
+                    void submitReview();
+                  }
+                }}
                 disabled={
                   locked ||
-                  form.source?.status !== "ready" ||
-                  form.steps.length === 0
+                  (!recipe &&
+                    (form.source?.status !== "ready" ||
+                      form.steps.length === 0))
                 }
               >
-                На проверку
+                {nextTask?.label || "На проверку"}
                 <Icon name="arrow" size={16} />
               </button>
             </>
@@ -521,11 +671,14 @@ export function Editor({
       )}
       <nav className="editor-jumps" aria-label="К разделу рецепта">
         <a href="#recipe-details">Карточка блюда</a>
+        {recipe && editable && (
+          <a href="#recipe-ingredients-heading">Ингредиенты</a>
+        )}
         <a href="#recipe-video">Видео</a>
         <a href="#recipe-steps">Шаги ({form.steps.length})</a>
       </nav>
       <div className="editor-grid">
-        <aside className="editor-source" id="recipe-video">
+        <aside className="editor-source" id="recipe-video" tabIndex={-1}>
           {form.source && <Video source={form.source} videoRef={video} />}
           <div className="source-meta">
             <span>
@@ -537,6 +690,18 @@ export function Editor({
           {form.source?.is_demo && (
             <p className="source-caption">Учебная видеозапись</p>
           )}
+          {recipe &&
+            editable &&
+            form.source?.status === "ready" &&
+            form.source.playback_url && (
+              <StepMarker
+                key={form.source.id}
+                video={video}
+                duration={form.source.duration_ms}
+                disabled={locked || form.steps.length >= 30}
+                onAdd={addStep}
+              />
+            )}
           {form.source?.status === "rejected" && editable && (
             <div className="notice warning">
               <div>
@@ -641,6 +806,7 @@ export function Editor({
             <label>
               {recipe ? "Название блюда" : "Название"}
               <input
+                id="recipe-title"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 minLength={3}
@@ -650,6 +816,7 @@ export function Editor({
             <label>
               {recipe ? "Описание блюда · необязательно" : "Результат работы"}
               <textarea
+                id="recipe-purpose"
                 rows={2}
                 value={form.purpose}
                 onChange={(e) => setForm({ ...form, purpose: e.target.value })}
@@ -825,6 +992,7 @@ export function Editor({
                     <label>
                       <span className="sr-only">Описание шага {index + 1}</span>
                       <textarea
+                        id={`step-description-${index}`}
                         rows={3}
                         placeholder={
                           recipe
@@ -843,6 +1011,7 @@ export function Editor({
                         Начало
                         <input
                           aria-label={`Начало шага ${index + 1}`}
+                          id={`step-start-${index}`}
                           value={step.startInput}
                           onChange={(e) =>
                             updateStep(index, { startInput: e.target.value })
@@ -855,6 +1024,7 @@ export function Editor({
                         Конец
                         <input
                           aria-label={`Конец шага ${index + 1}`}
+                          id={`step-end-${index}`}
                           value={step.endInput}
                           onChange={(e) =>
                             updateStep(index, { endInput: e.target.value })
@@ -863,22 +1033,24 @@ export function Editor({
                           inputMode="decimal"
                         />
                       </label>
-                      <button
-                        className="text-button current-time"
-                        type="button"
-                        onClick={() =>
-                          updateStep(index, {
-                            startInput: formatMsExact(
-                              Math.floor(
-                                (video.current?.currentTime || 0) * 1000,
+                      {form.source?.status === "ready" && (
+                        <button
+                          className="text-button current-time"
+                          type="button"
+                          onClick={() =>
+                            updateStep(index, {
+                              startInput: formatMsExact(
+                                Math.floor(
+                                  (video.current?.currentTime || 0) * 1000,
+                                ),
                               ),
-                            ),
-                          })
-                        }
-                      >
-                        <Icon name="clock" size={15} />
-                        Взять текущее время
-                      </button>
+                            })
+                          }
+                        >
+                          <Icon name="clock" size={15} />
+                          Начало по плееру
+                        </button>
+                      )}
                     </div>
                   </fieldset>
                 ) : (
@@ -935,7 +1107,7 @@ export function Editor({
           {editable && (
             <button
               className="add-step"
-              onClick={addStep}
+              onClick={() => addStep()}
               disabled={locked || form.steps.length >= 30}
             >
               <Icon name="plus" />

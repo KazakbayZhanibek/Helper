@@ -69,6 +69,7 @@ export type Version = {
   };
 };
 export type InstructionSummary = {
+  favorite?: boolean | null;
   kind: "recipe" | "legacy";
   ingredient_count: number;
   servings: number | null;

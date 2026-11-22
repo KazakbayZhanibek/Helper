@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import type { Source } from "./types";
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
+    bookmark: <path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" />,
     bowl: (
       <>
         <path d="M3 12h18a9.4 9.4 0 0 1-18 0ZM9 21h6M9 9c-1.5-2.6 2.6-3.3 1.2-6M14 9c-1.5-2.6 2.6-3.3 1.2-6" />

@@ -78,26 +78,29 @@ export function Home({
                     : "Создать кухню бесплатно"}{" "}
                 <Icon name="arrow" size={17} />
               </button>
-              <a className="text-button" href="/example">
-                Посмотреть рецепт
-              </a>
             </div>
           </div>
-          <figure>
-            <img
-              src="/hero-kneading.jpg"
-              width="1120"
-              height="630"
-              alt="Повар замешивает тесто ладонью на присыпанном мукой столе"
-              fetchPriority="high"
-            />
-            <figcaption>
-              Ручной замес теста{" "}
-              <a href="https://www.pexels.com/video/a-person-kneading-the-dough-7236946/">
-                Eva Bronzini / Pexels
-              </a>
-            </figcaption>
-          </figure>
+          <a className="home-example" href="/example">
+            <div className="home-example-image">
+              <img
+                src="/examples/vegetables/vegetables.jpg"
+                width="960"
+                height="540"
+                alt="Нарезанный кабачок и сладкий перец на разделочной доске"
+                fetchPriority="high"
+              />
+              <span aria-hidden="true">
+                <Icon name="play" size={23} />
+              </span>
+            </div>
+            <div className="home-example-caption">
+              <div>
+                <small>Видеорецепт · 3 шага</small>
+                <strong>Овощная нарезка из кабачка и перца</strong>
+              </div>
+              <Icon name="arrow" size={22} />
+            </div>
+          </a>
         </section>
         <section id="plans" className="sales-plans">
           <h2>Тарифы для кухни</h2>
