@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { countNoun } from "./format";
+import { RecipeIngredients } from "./RecipeDetails";
 import { SavedStepPhotos } from "./SavedStepPhotos";
 import {
   api,
@@ -250,6 +251,7 @@ export function Reader({
           </div>
         </div>
       )}
+      {snapshot.recipe && <RecipeIngredients recipe={snapshot.recipe} />}
       <div className="reader-grid">
         <section className="reader-video">
           <Video

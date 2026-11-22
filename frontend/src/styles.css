@@ -1633,6 +1633,52 @@ input[type="checkbox"] {
 .language-field {
   max-width: 190px;
 }
+.recipe-editor,
+.recipe-ingredients {
+  min-width: 0;
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.recipe-editor summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--pine);
+  outline-offset: 2px;
+}
+.recipe-editor summary:focus-visible {
+  outline: 3px solid var(--pine);
+}
+.recipe-editor fieldset {
+  padding: 0 16px 16px;
+}
+.recipe-editor textarea {
+  width: 100%;
+}
+.recipe-editor .field-hint {
+  margin: 8px 0 16px;
+}
+.recipe-servings {
+  max-width: 190px;
+}
+.recipe-ingredients {
+  max-width: 650px;
+  padding: 16px;
+}
+.recipe-ingredients .section-heading {
+  margin-bottom: 12px;
+}
+.recipe-ingredients ul {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.recipe-ingredients li + li {
+  margin-top: 6px;
+}
 .section-heading {
   display: flex;
   justify-content: space-between;

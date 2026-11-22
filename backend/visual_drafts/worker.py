@@ -23,21 +23,29 @@ from .services import decoded_jpeg, persist_frame, safe_frame_path
 
 def protocol_for_job(job, session):
     """A session keeps its contract across deploys, retries and live batches."""
+    from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION, SPAN_WIRE_VERSION
+    from .pair_verification import VERSION as PAIR_REVIEW_VERSION, is_free_profile
+
     protocol = job.payload.get('visual_protocol', '2')
     pinned = session.analysis_budget.get('visual_protocol', '2')
     if protocol not in ('2', '3') or protocol != pinned:
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим задания не соответствует сеансу анализа. Начните новый сеанс.')
     review = session.analysis_budget.get('semantic_review')
-    if (review != job.payload.get('semantic_review') or review not in (None, 'v1')
+    if (review != job.payload.get('semantic_review') or review not in (None, 'v1', PAIR_REVIEW_VERSION)
             or (review and (protocol != '3' or session.mode != 'upload'))):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим проверки не соответствует сеансу анализа. Начните новый сеанс.')
+    review_model = session.analysis_budget.get('semantic_review_model')
+    if (review_model != job.payload.get('semantic_review_model')
+            or (review_model is not None
+                and (review != PAIR_REVIEW_VERSION or not is_free_profile('openrouter', review_model)))):
+        raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Модель проверки не соответствует сеансу анализа.')
     coverage = session.analysis_budget.get('short_action_coverage')
     if (coverage != job.payload.get('short_action_coverage') or coverage not in (None, 'v1')
-            or (coverage and (protocol != '3' or session.mode != 'upload' or review))):
+            or (coverage and (protocol != '3' or session.mode != 'upload' or review == 'v1'))):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим разбора переходов не соответствует сеансу анализа.')
     grounding = session.analysis_budget.get('frame_grounding')
     if (grounding != job.payload.get('frame_grounding') or grounding not in (None, 'v1', 'v2', 'v3')
-            or (grounding and (protocol != '3' or session.mode != 'upload' or coverage != 'v1' or review))):
+            or (grounding and (protocol != '3' or session.mode != 'upload' or coverage != 'v1' or review == 'v1'))):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Режим проверки фактов кадров не соответствует сеансу анализа.')
     recovery = session.analysis_budget.get('action_order_recovery')
     if (recovery != job.payload.get('action_order_recovery') or recovery not in (None, 'drop_invalid_order_v1')
@@ -47,9 +55,10 @@ def protocol_for_job(job, session):
     if wire != job.payload.get('demonstration_wire'):
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Формат привязки к кадрам не соответствует сеансу анализа.')
     if wire is not None:
-        from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION, SPAN_WIRE_VERSION
         if grounding != 'v3' or wire not in (SPAN_WIRE_VERSION, SHARED_CAPTIONS_WIRE_VERSION):
             raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный формат привязки к кадрам.')
+    if review == PAIR_REVIEW_VERSION and wire != SHARED_CAPTIONS_WIRE_VERSION:
+        raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Проверка действий требует общей подписи на каждый кадр.')
     return protocol
 
 
@@ -79,8 +88,12 @@ def check_grounding_checkpoint(content, session, *, window=False):
 
 
 def provider_for_job(job, session, *, images=None):
+    from .pair_verification import VERSION as PAIR_REVIEW_VERSION, is_free_profile
+
     provider = VisualProvider(session.organization)
     provider.protocol = protocol_for_job(job, session)
+    if session.analysis_budget.get('semantic_review') == PAIR_REVIEW_VERSION and not is_free_profile(provider.provider, provider.model):
+        raise ProcessingFailure('AI_FREE_MODEL_REQUIRED', 'Для проверки действий нужна бесплатная модель OpenRouter.')
     provider.short_action_coverage = session.analysis_budget.get('short_action_coverage')
     provider.frame_grounding = session.analysis_budget.get('frame_grounding')
     provider.demonstration_wire = session.analysis_budget.get('demonstration_wire')

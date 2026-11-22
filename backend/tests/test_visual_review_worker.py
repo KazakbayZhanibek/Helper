@@ -1,5 +1,6 @@
 """Review scheduling with real reservations and deterministic model substitutes."""
 from copy import deepcopy
+import json
 from types import SimpleNamespace
 import uuid
 
@@ -10,6 +11,7 @@ from ai_budget.models import AIUsageReservation, BudgetAccount
 from ai_drafts import providers
 from ai_drafts.providers import ProviderFailure
 from core.services import etag
+from media_pipeline.exceptions import ProcessingFailure
 from media_pipeline.models import ProcessingJob
 from media_pipeline.worker import process_one
 from visual_drafts import planning, provider, review, services, worker
@@ -127,6 +129,101 @@ def test_original_window_remains_immutable_and_corrected_result_is_selected(team
     for model, row in [(VisualAnalysisWindow, window), (VisualAnalysisReview, checked)]:
         with pytest.raises(IntegrityError), transaction.atomic():
             model.objects.filter(pk=row.pk).update(content={})
+
+
+@pytest.mark.parametrize('review_error,review_model', [
+    ('', ''), ('', 'test-provider/alternate-vision:free'), ('VISUAL_RESPONSE_INCOMPLETE', ''), ('PROVIDER_TIMEOUT', ''),
+])
+@pytest.mark.django_db(transaction=True)
+def test_pair_review_uses_two_free_calls_and_applies_only_checked_content(team, full_video, settings, monkeypatch,
+                                                                         review_error, review_model):
+    from visual_drafts.demonstrations import SHARED_CAPTIONS_WIRE_VERSION
+    from visual_drafts.pair_verification import VERSION
+
+    settings.VISUAL_ACTION_EVIDENCE = settings.VISUAL_SHORT_ACTION_COVERAGE = settings.VISUAL_FRAME_GROUNDING = True
+    settings.VISUAL_FRAME_GROUNDING_VERSION = 'v3'
+    settings.VISUAL_DEMONSTRATION_SHARED_CAPTIONS = settings.VISUAL_DEMONSTRATION_PAIR_REVIEW = True
+    settings.STEP_DRAFT_BACKEND = 'openrouter'
+    settings.STEP_DRAFT_ENDPOINT = providers.OPENROUTER_ENDPOINT
+    first_model = settings.STEP_DRAFT_MODEL = 'dots-studio/dots-3-note-preview:free'
+    settings.VISUAL_DEMONSTRATION_PAIR_REVIEW_MODEL = review_model
+    pinned_model = review_model or first_model
+    settings.OPENROUTER_API_KEY = 'test-key'
+    settings.EXTERNAL_AI_ENABLED = True
+    team.org.external_ai_enabled = True
+    team.org.save(update_fields=['external_ai_enabled'])
+    monkeypatch.setattr(worker, 'uploaded_frames', fake_extraction)
+    calls = []
+
+    def respond(url, body, **kwargs):
+        assert body['provider']['max_price'] == {'prompt': 0, 'completion': 0, 'request': 0, 'image': 0}
+        assert body['provider']['allow_fallbacks'] is False
+        schema_name = body['response_format']['json_schema']['name']
+        assert body['model'] == (first_model if schema_name == 'visual_action_evidence' else pinned_model)
+        if body['model'] == first_model:
+            assert body['reasoning'] == {'enabled': False}
+        calls.append(schema_name)
+        if schema_name == 'visual_action_evidence':
+            output = {'schema_version': SHARED_CAPTIONS_WIRE_VERSION, 'language': 'ru',
+                      'frame_captions': {'1': 'Крышка лежит.', '2': 'Крышку сильно подняли.'},
+                      'actions': [{'subject': 'Крышка', 'title': 'Сильный подъём крышки', 'kind': 'action',
+                                   'frame_pair': '1-2', 'instruction': 'Сильно поднимите крышку за край.'}], 'gaps': []}
+        else:
+            assert schema_name == 'visual_pair_review'
+            if review_error == 'PROVIDER_TIMEOUT':
+                raise ProcessingFailure(review_error, 'Сервис ИИ не ответил вовремя.')
+            if review_error:
+                raise ProviderFailure(review_error, 'Ответ не завершён.')
+            output = {'review_version': VERSION, 'language': 'ru',
+                      'frame_captions': {'1': 'Крышка лежит.', '2': 'Крышка над коробкой.'},
+                      'verdicts': {'o1': {'decision': 'narrow', 'title': 'Подъём крышки',
+                                          'instruction': 'Поднимите крышку за край.'}}}
+        return {'id': f'test-{len(calls)}', 'model': body['model'],
+                'usage': {'prompt_tokens': 100, 'completion_tokens': 30, 'cost': 0},
+                'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(output)}}]}
+
+    monkeypatch.setattr(provider, 'json_request', respond)
+    rejected = post(team.clients['author'], full_video.url + '/visual-proposals',
+                    {'consent_images': True, 'scope': 'window', 'start_ms': 0, 'end_ms': 20000, 'max_ai_calls': 1},
+                    etag=etag(full_video.working), key='pair-review-too-small')
+    assert rejected.status_code == 422
+    assert rejected.json()['error']['code'] == 'AI_BUDGET_TOO_SMALL'
+    assert not AIUsageReservation.objects.exists()
+    if review_model:
+        settings.VISUAL_DEMONSTRATION_PAIR_REVIEW_MODEL = providers.OPENROUTER_BUDGET_MODEL
+        rejected = post(team.clients['author'], full_video.url + '/visual-proposals',
+                        {'consent_images': True, 'scope': 'window', 'start_ms': 0, 'end_ms': 20000, 'max_ai_calls': 2},
+                        etag=etag(full_video.working), key='pair-review-paid-reviewer')
+        assert rejected.status_code == 422
+        assert rejected.json()['error']['code'] == 'AI_FREE_MODEL_REQUIRED'
+        assert not VisualSession.objects.exists()
+        assert not AIUsageReservation.objects.exists()
+        settings.VISUAL_DEMONSTRATION_PAIR_REVIEW_MODEL = review_model
+    job, session = one_window(team, full_video)
+    assert session.analysis_budget['semantic_review'] == VERSION
+    assert session.analysis_budget['semantic_review_model'] == job.payload['semantic_review_model'] == pinned_model
+    settings.VISUAL_DEMONSTRATION_PAIR_REVIEW_MODEL = 'test-provider/changed-setting:free'
+    proposal = finish(job)
+    window = session.analysis_windows.get()
+    assert calls == ['visual_action_evidence', 'visual_pair_review']
+    assert dict(AIUsageReservation.objects.values_list('call_key', 'model')) == {
+        f'window:{window.id}': first_model, f'verify:{window.id}': pinned_model,
+    }
+    assert window.content['steps'][0]['title'] == 'Сильный подъём крышки'
+    shown = services.proposal_data(proposal)
+    assert shown['can_apply'] is (not review_error)
+    response = post(team.clients['author'], full_video.url + f'/visual-proposals/{proposal.id}/apply',
+                    {'confirm_replace': True}, etag=etag(full_video.working), key='pair-review-apply')
+    if review_error:
+        assert window.semantic_review.error_code == review_error
+        assert response.status_code == 409
+        assert response.json()['error']['code'] == 'VISUAL_REVIEW_INCOMPLETE'
+        assert not full_video.working.steps.exists()
+    else:
+        assert response.status_code == 200, response.json()
+        assert AIUsageReservation.objects.filter(state='settled', usage__cost_microusd=0).count() == 2
+        assert response.json()['steps'][0]['description'] == 'Поднимите крышку за край.'
+        assert response.json()['steps'][0]['photo_demonstration'] == shown['steps'][0]['photo_demonstration']
 
 
 def test_completed_empty_review_rejects_candidate_instead_of_resurrecting_steps(team, reviewed_video, monkeypatch):

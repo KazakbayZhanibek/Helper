@@ -3,6 +3,7 @@ import { VisualAnalysis } from "./VisualAnalysis";
 import { SavedStepPhotos } from "./SavedStepPhotos";
 import { TeachingClip } from "./TeachingClip";
 import { ProcessingPanel } from "./Processing";
+import { RecipeEditor, RecipeIngredients } from "./RecipeDetails";
 import { UploadCard } from "./Upload";
 import {
   useCallback,
@@ -30,7 +31,13 @@ import {
 } from "./components";
 import type { Navigate, Organization, Version, WorkingCopy } from "./types";
 import { formatMsExact, parseMs } from "./format";
-import { payload, toDraft, type Draft, type DraftStep } from "./editorDraft";
+import {
+  payload,
+  recipeFromInputs,
+  toDraft,
+  type Draft,
+  type DraftStep,
+} from "./editorDraft";
 import { stepWarningMessages } from "./visual";
 function validation(form: Draft): string[] {
   const errors: string[] = [];
@@ -38,6 +45,20 @@ function validation(form: Draft): string[] {
     errors.push("Название должно содержать не менее 3 символов.");
   if (form.purpose.trim().length < 10)
     errors.push("Опишите цель: не менее 10 символов.");
+  const recipe = recipeFromInputs(form);
+  if (recipe) {
+    if (recipe.ingredients.length > 30)
+      errors.push("Добавьте не больше 30 ингредиентов.");
+    if (recipe.ingredients.some((line) => [...line].length > 160))
+      errors.push("Сократите строку ингредиента до 160 символов.");
+    if (
+      recipe.servings !== null &&
+      (!Number.isInteger(recipe.servings) ||
+        recipe.servings < 1 ||
+        recipe.servings > 1000)
+    )
+      errors.push("Укажите от 1 до 1000 порций или оставьте поле пустым.");
+  }
   form.steps.forEach((s, i) => {
     if (s.title.trim().length < 3)
       errors.push(`Шаг ${i + 1}: добавьте название от 3 символов.`);
@@ -244,6 +265,9 @@ export function Editor({
     if (!form) return;
     const errors = validation(form);
     if (!form.steps.length) errors.push("Добавьте хотя бы один шаг.");
+    const recipe = recipeFromInputs(form);
+    if (recipe && !recipe.ingredients.length)
+      errors.push("Добавьте ингредиенты рецепта или очистите поле порций.");
     if (errors.length) {
       setValidationErrors(errors);
       return;
@@ -355,6 +379,7 @@ export function Editor({
   const locked = busy || saving || pipelineBusy || uploading;
   const inReview = form.workflow === "in_review" && form.is_open;
   const checked = form.steps.filter((s) => s.checked).length;
+  const recipe = recipeFromInputs(form);
   return (
     <>
       <button
@@ -635,6 +660,23 @@ export function Editor({
               </select>
             </label>
           </fieldset>
+          {form.editable ? (
+            <RecipeEditor
+              key={form.instruction_id}
+              ingredientsInput={form.ingredientsInput}
+              servingsInput={form.servingsInput}
+              disabled={!editable || locked}
+              onChange={(patch) => {
+                setForm((current) =>
+                  current ? { ...current, ...patch } : current,
+                );
+                setSavedNotice("");
+                setValidationErrors([]);
+              }}
+            />
+          ) : (
+            recipe && <RecipeIngredients recipe={recipe} />
+          )}
           <div className="section-heading">
             <h2>
               Шаги инструкции <span>{form.steps.length}</span>
@@ -873,7 +915,11 @@ export function Editor({
                           }
                           disabled={locked || conflict}
                         />
-                        <span>{label}</span>
+                        <span>
+                          {recipe && key === "completeness"
+                            ? "Ингредиенты, количества и пояснения проверены"
+                            : label}
+                        </span>
                       </label>
                     ))}
                   </div>

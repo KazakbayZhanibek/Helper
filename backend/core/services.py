@@ -99,7 +99,7 @@ def step_data(step):
 
 
 def working_data(working):
-    return {'id': str(working.id), 'instruction_id': str(working.instruction_id), 'revision': working.revision, 'etag': etag(working), 'editable': working.is_open and working.workflow == 'draft', 'is_open': working.is_open, 'workflow': working.workflow, 'title': working.title, 'purpose': working.purpose, 'language': working.language, 'steps': [step_data(s) for s in working.steps.all()], 'source': source_data(working.instruction.source_asset), 'return_reason': working.return_reason}
+    return {'id': str(working.id), 'instruction_id': str(working.instruction_id), 'revision': working.revision, 'etag': etag(working), 'editable': working.is_open and working.workflow == 'draft', 'is_open': working.is_open, 'workflow': working.workflow, 'title': working.title, 'purpose': working.purpose, 'language': working.language, 'recipe': working.recipe, 'steps': [step_data(s) for s in working.steps.all()], 'source': source_data(working.instruction.source_asset), 'return_reason': working.return_reason}
 
 
 def version_data(version):
@@ -154,6 +154,32 @@ def content_fields(data):
     if not isinstance(language, str) or language not in {'ru', 'kk', 'mixed'}:
         fail('VALIDATION_ERROR', 'Выберите язык инструкции.', fields={'language': ['Выберите русский, казахский или смешанный.']})
     return title, purpose, language
+
+
+def validate_recipe(recipe, *, for_review=False):
+    if recipe is None:
+        return None
+    if not isinstance(recipe, dict) or set(recipe) != {'ingredients', 'servings'}:
+        fail('VALIDATION_ERROR', 'Укажите ингредиенты и число порций в карточке рецепта.', fields={'recipe': ['Проверьте карточку рецепта.']})
+    ingredients = recipe['ingredients']
+    if not isinstance(ingredients, list) or len(ingredients) > 30:
+        fail('VALIDATION_ERROR', 'Добавьте до 30 ингредиентов.', fields={'recipe.ingredients': ['Нужен список из 0–30 строк.']})
+    lines = []
+    for ingredient in ingredients:
+        line = text_field({'recipe.ingredients': ingredient}, 'recipe.ingredients', 1, 160)
+        if len(line.splitlines()) != 1:
+            fail('VALIDATION_ERROR', 'Укажите каждый ингредиент отдельной строкой.', fields={'recipe.ingredients': ['Используйте одну строку на ингредиент.']})
+        if '\x00' in line or any('\ud800' <= character <= '\udfff' for character in line):
+            fail('VALIDATION_ERROR', 'В ингредиенте есть недопустимый символ.', fields={'recipe.ingredients': ['Проверьте текст ингредиента.']})
+        lines.append(line)
+    servings = recipe['servings']
+    if servings is not None and (type(servings) is not int or not 1 <= servings <= 1000):
+        fail('VALIDATION_ERROR', 'Введите целое число порций от 1 до 1000.', fields={'recipe.servings': ['Допустимо от 1 до 1000 порций.']})
+    if not lines and servings is None:
+        return None
+    if for_review and not lines:
+        fail('VALIDATION_ERROR', 'Добавьте хотя бы один ингредиент перед отправкой рецепта на проверку.', fields={'recipe.ingredients': ['Добавьте ингредиент.']})
+    return {'ingredients': lines, 'servings': servings}
 
 
 def audit(member, action, obj):
@@ -245,7 +271,7 @@ def validate_steps(data, working):
 
 
 def save_working(member, instruction_id, data, supplied):
-    allowed_fields(data, {'title', 'purpose', 'language', 'steps'})
+    allowed_fields(data, {'title', 'purpose', 'language', 'recipe', 'steps'})
     with transaction.atomic():
         instruction = instruction_for(member, instruction_id, lock=True)
         working = WorkingCopy.objects.select_for_update().get(instruction=instruction)
@@ -254,6 +280,8 @@ def save_working(member, instruction_id, data, supplied):
             fail('INVALID_STATE', 'Верните инструкцию в черновик перед редактированием.')
         title, purpose, language = content_fields(data)
         steps = validate_steps(data, working)
+        if 'recipe' in data:
+            working.recipe = validate_recipe(data['recipe'])
         working.title, working.purpose, working.language = title, purpose, language
         # Rebuild order atomically. IDs stay stable; all review marks reset on editing.
         working.steps.all().delete()
@@ -271,6 +299,7 @@ def validate_ready(working):
     if not 1 <= count <= 30:
         fail('VALIDATION_ERROR', 'Добавьте от 1 до 30 шагов.')
     content_fields({'title': working.title, 'purpose': working.purpose, 'language': working.language})
+    validate_recipe(working.recipe, for_review=True)
     for step in working.steps.all():
         if step.end_ms > asset.duration_ms or step.end_ms <= step.start_ms:
             fail('INVALID_TIME_RANGE', 'Проверьте границы времени каждого шага.')
@@ -343,6 +372,8 @@ def publish(member, instruction_id, data, supplied):
     if working.steps.filter(checked_by__isnull=True).exists():
         fail('VALIDATION_ERROR', 'Проверьте каждый шаг перед публикацией.')
     snapshot = {'title': working.title, 'purpose': working.purpose, 'language': working.language, 'steps': [step_data(s) for s in working.steps.all()], 'source': source_data(instruction.source_asset), 'confirmations': confirmations}
+    if working.recipe is not None:
+        snapshot['recipe'] = working.recipe
     number = (instruction.versions.aggregate(value=Max('version_number'))['value'] or 0) + 1
     digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
     version = PublishedVersion.objects.create(organization=member.organization, instruction=instruction, source_asset=instruction.source_asset, version_number=number, snapshot=snapshot, content_sha256=digest, source_working_revision=working.revision, published_by=member.user)
@@ -371,6 +402,7 @@ def create_draft(member, instruction_id, data):
             fail('NOT_FOUND', 'Версия не найдена.', 404)
         snapshot = version.snapshot
         working.title, working.purpose, working.language = snapshot['title'], snapshot['purpose'], snapshot['language']
+        working.recipe = snapshot.get('recipe')
         working.workflow, working.is_open = 'draft', True
         working.based_on_version = version
         working.return_reason = ''

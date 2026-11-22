@@ -57,3 +57,29 @@ test("reloading and saving a last step does not round beyond the source endpoint
   draft.steps[0].startInput = "00:20.025";
   assert.equal(payload(draft).steps[0].start_ms, 20_025);
 });
+
+test("editing a recipe preserves the author's quantities and the step's photo evidence", () => {
+  const draft = toDraft({
+    ...working,
+    recipe: { ingredients: ["Мука — 300 г", "Соль — по вкусу"], servings: 4 },
+  });
+  assert.equal(draft.ingredientsInput, "Мука — 300 г\nСоль — по вкусу");
+  assert.equal(draft.servingsInput, "4");
+  draft.ingredientsInput += "\n\n  Вода — ½ стакана  ";
+  const saved = payload(draft);
+  assert.deepEqual(saved.recipe, {
+    ingredients: ["Мука — 300 г", "Соль — по вкусу", "Вода — ½ стакана"],
+    servings: 4,
+  });
+  assert.deepEqual(saved.steps[0].evidence_frame_ids, ["frame-2", "frame-3"]);
+  draft.ingredientsInput = "";
+  draft.servingsInput = "";
+  assert.deepEqual(payload(draft).recipe, { ingredients: [], servings: null });
+});
+
+test("an untouched legacy instruction stays outside the cookbook", () => {
+  const draft = toDraft(working);
+  assert.equal(payload(draft).recipe, null);
+  draft.ingredientsInput = "Яблоко";
+  assert.deepEqual(payload(draft).recipe, { ingredients: ["Яблоко"], servings: null });
+});

@@ -104,8 +104,13 @@ def evidence_ids(content):
 
 def checked_instruction_content(content, frames, session):
     """Same read/apply projection; no model calls, fixes or history mutation."""
+    from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION
+    from .pair_verification import VERSION as PAIR_REVIEW_VERSION
     from .short_actions import reconcile_action_links
     pin = session.analysis_budget.get('frame_grounding')
+    review = session.analysis_budget.get('semantic_review')
+    pair_review = (pin == 'v3' and review == PAIR_REVIEW_VERSION
+                   and session.analysis_budget.get('demonstration_wire') == SHARED_CAPTIONS_WIRE_VERSION)
     ledger = content.get('frame_grounding', {})
     if not isinstance(ledger, dict):
         raise InvalidModelOutput('VISUAL_GROUNDING_PROTOCOL_INVALID')
@@ -113,7 +118,7 @@ def checked_instruction_content(content, frames, session):
     if (pin not in (None, 'v1', 'v2', 'v3') or pin != actual
             or (pin and (session.mode != 'upload' or session.analysis_budget.get('visual_protocol') != '3'
                          or session.analysis_budget.get('short_action_coverage') != 'v1'
-                         or session.analysis_budget.get('semantic_review')))):
+                         or (review and not pair_review)))):
         raise InvalidModelOutput('VISUAL_GROUNDING_PROTOCOL_INVALID')
     if pin:
         if pin == 'v3':
@@ -126,6 +131,17 @@ def checked_instruction_content(content, frames, session):
         # remove uncertain/unlinked observations and hide a corrupt reference.
         return reconcile_grounding(content, frames, session)
     return reconcile_action_links(content, frames, session)
+
+
+def pair_review_complete(content, session):
+    from .pair_verification import VERSION as PAIR_REVIEW_VERSION
+
+    if session.analysis_budget.get('semantic_review') != PAIR_REVIEW_VERSION:
+        return True
+    analysis = content.get('analysis', {})
+    review = analysis.get('semantic_review', {})
+    return (analysis.get('coverage_complete') is True and review.get('strategy') == PAIR_REVIEW_VERSION
+            and review.get('windows_unchecked') == 0 and review.get('windows_checked') == review.get('windows_eligible'))
 
 
 def action_links_valid(content, frames):
@@ -196,7 +212,7 @@ def proposal_data(proposal):
         grounding = content.get('frame_grounding')
         if isinstance(grounding, dict):
             content['frame_grounding'] = {'version': grounding.get('version')}
-    return {'id': str(proposal.id), 'instruction_id': str(session.instruction_id), 'session_id': str(session.id), 'base_working_revision': session.base_working_revision, 'provider': proposal.provider, 'model': proposal.model, 'created_at': s.utc(proposal.created_at), 'applied_at': s.utc(proposal.applied_at), 'preliminary': preliminary, 'can_apply': not preliminary and not stale and links_valid and proposal.applied_at is None and working.is_open and working.workflow == 'draft' and 0 < len(content['steps']) <= 30, 'stale': bool(stale), 'window_start_ms': session.window_start_ms, 'window_end_ms': session.window_end_ms, 'frames': [frame_data(f) for f in frames], **content, 'source': s.source_data(session.asset)}
+    return {'id': str(proposal.id), 'instruction_id': str(session.instruction_id), 'session_id': str(session.id), 'base_working_revision': session.base_working_revision, 'provider': proposal.provider, 'model': proposal.model, 'created_at': s.utc(proposal.created_at), 'applied_at': s.utc(proposal.applied_at), 'preliminary': preliminary, 'can_apply': not preliminary and not stale and links_valid and proposal.applied_at is None and working.is_open and working.workflow == 'draft' and pair_review_complete(content, session) and 0 < len(content['steps']) <= 30, 'stale': bool(stale), 'window_start_ms': session.window_start_ms, 'window_end_ms': session.window_end_ms, 'frames': [frame_data(f) for f in frames], **content, 'source': s.source_data(session.asset)}
 
 
 def session_data(session):
@@ -399,15 +415,33 @@ def request_uploaded(member, instruction_id, data, supplied):
                     protocol['demonstration_wire'] = SPAN_WIRE_VERSION
     elif protocol and getattr(settings, 'VISUAL_SEMANTIC_REVIEW', False):
         protocol['semantic_review'] = 'v1'
+    required_calls = len(windows)
+    if getattr(settings, 'VISUAL_DEMONSTRATION_PAIR_REVIEW', False):
+        from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION
+        from .pair_verification import VERSION as PAIR_REVIEW_VERSION, is_free_profile
+        if protocol.get('demonstration_wire') != SHARED_CAPTIONS_WIRE_VERSION:
+            s.fail('VISUAL_PROTOCOL_INVALID', 'Проверка действий требует общей подписи на каждый кадр.', 422)
+        if not is_free_profile(config['provider'], config['model']):
+            s.fail('AI_FREE_MODEL_REQUIRED', 'Для проверки действий нужна бесплатная модель OpenRouter.', 422)
+        review_model = getattr(settings, 'VISUAL_DEMONSTRATION_PAIR_REVIEW_MODEL', '') or config['model']
+        if not is_free_profile(config['provider'], review_model):
+            s.fail('AI_FREE_MODEL_REQUIRED', 'Для повторной проверки выберите модель OpenRouter с суффиксом :free.', 422)
+        protocol['semantic_review'] = PAIR_REVIEW_VERSION
+        protocol['semantic_review_model'] = review_model
+        required_calls *= 2
+        if calls < required_calls:
+            s.fail('AI_BUDGET_TOO_SMALL', f'Для разбора и проверки каждого фрагмента нужно до {required_calls} бесплатных обращений.', 422)
     session = VisualSession.objects.create(organization=member.organization, instruction=instruction, asset=asset, created_by=member.user, mode='upload', consent_images=True, base_working_revision=working.revision, language=working.language, expires_at=timezone.now() + timedelta(hours=6), window_start_ms=start, window_end_ms=end, analysis_scope=scope, analysis_budget={'max_calls': calls, 'max_cost_microusd': cost, **protocol})
     try:
-        preflight(session, len(windows))
+        preflight(session, required_calls)
     except ProviderFailure as error:
         s.fail(error.code, error.message, 422)
     VisualAnalysisWindow.objects.bulk_create([VisualAnalysisWindow(organization=member.organization, session=session, ordinal=index + 1, start_ms=left, end_ms=right) for index, (left, right) in enumerate(windows)])
     payload = {'visual_session_id': str(session.id), 'visual_protocol': session.analysis_budget.get('visual_protocol', '2')}
     if protocol.get('semantic_review'):
         payload['semantic_review'] = protocol['semantic_review']
+    if protocol.get('semantic_review_model'):
+        payload['semantic_review_model'] = protocol['semantic_review_model']
     if protocol.get('short_action_coverage'):
         payload['short_action_coverage'] = protocol['short_action_coverage']
     if protocol.get('frame_grounding'):
@@ -466,6 +500,8 @@ def apply_proposal(member, instruction_id, proposal_id, data, supplied):
         s.fail('STALE_PROPOSAL', 'Предложение устарело. Текущие шаги сохранены.', 409)
     if not working.is_open or working.workflow != 'draft':
         s.fail('INVALID_STATE', 'Верните инструкцию в черновик.', 409)
+    if not pair_review_complete(proposal.content, session):
+        s.fail('VISUAL_REVIEW_INCOMPLETE', 'Проверка действий по фотографиям ещё не завершена.', 409)
     try:
         frame_ids = evidence_ids(proposal.content)
     except InvalidModelOutput:

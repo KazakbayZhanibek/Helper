@@ -8,8 +8,10 @@ from ai_budget.services import execute_budgeted, preflight
 from ai_drafts.providers import ProviderFailure
 from ai_drafts.validation import InvalidModelOutput
 from core.models import Organization
+from media_pipeline.exceptions import ProcessingFailure
 from media_pipeline.telemetry import count, measured
 from .models import VisualAnalysisWindow, VisualAnalysisReview
+from .pair_verification import VERSION as PAIR_REVIEW_VERSION, PairVerificationError
 
 
 REVIEW_VERSION = 'v1'
@@ -17,18 +19,32 @@ REVIEW_VERSION = 'v1'
 
 def enabled(session):
     budget = getattr(session, 'analysis_budget', {})
-    return (getattr(session, 'mode', None) == 'upload'
-            and budget.get('visual_protocol') == '3'
-            and budget.get('semantic_review') == REVIEW_VERSION)
+    if getattr(session, 'mode', None) != 'upload' or budget.get('visual_protocol') != '3':
+        return False
+    version = budget.get('semantic_review')
+    if version == REVIEW_VERSION:
+        return True
+    if version == PAIR_REVIEW_VERSION:
+        from .demonstrations import SHARED_CAPTIONS_WIRE_VERSION
+        return (budget.get('frame_grounding') == 'v3'
+                and budget.get('short_action_coverage') == 'v1'
+                and budget.get('demonstration_wire') == SHARED_CAPTIONS_WIRE_VERSION)
+    return False
 
 
-def review_state(window):
-    return getattr(getattr(window, 'semantic_review', None), 'state', None)
+def review_eligible(window, version):
+    return window.state == 'completed' and (version != PAIR_REVIEW_VERSION or bool(window.content.get('steps')))
 
 
-def effective_content(window):
+def review_state(window, version=None):
     review = getattr(window, 'semantic_review', None)
-    return review.content if review and review.state == 'completed' else window.content
+    if review and (version != PAIR_REVIEW_VERSION or review.version == version):
+        return review.state
+    return None
+
+
+def effective_content(window, version=None):
+    return window.semantic_review.content if review_state(window, version) == 'completed' else window.content
 
 
 def run_review(job, session, window, context):
@@ -39,9 +55,11 @@ def run_review(job, session, window, context):
     through the same session/org/platform ledger as ordinary video analysis.
     """
     from . import worker
-    from .review import VisualReviewProvider, candidate_from_content
 
-    if not enabled(session) or window.state != 'completed':
+    if not enabled(session):
+        return ''
+    version = session.analysis_budget['semantic_review']
+    if not review_eligible(window, version):
         return ''
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=job.organization_id)
@@ -50,6 +68,8 @@ def run_review(job, session, window, context):
         current = VisualAnalysisWindow.objects.select_for_update().get(pk=window.id, session=session)
         record = VisualAnalysisReview.objects.select_for_update().filter(window=current).first()
         if record:
+            if record.version != version:
+                return 'VISUAL_REVIEW_CHECKPOINT_CHANGED'
             if record.state == 'running':
                 record.state, record.error_code = 'failed', 'AI_CALL_OUTCOME_UNKNOWN'
                 record.save(update_fields=['state', 'error_code', 'updated_at'])
@@ -59,7 +79,13 @@ def run_review(job, session, window, context):
     try:
         frames = list(session.frames.filter(id__in=current.frame_ids).order_by('timestamp_ms'))
         images = worker.readable_frames(frames)
-        provider = VisualReviewProvider(session.organization, candidate=candidate_from_content(original))
+        if version == PAIR_REVIEW_VERSION:
+            from .pair_verification import VisualPairReviewProvider, candidate_from_content
+            provider = VisualPairReviewProvider(session.organization, candidate=candidate_from_content(original),
+                                                model=session.analysis_budget.get('semantic_review_model'))
+        else:
+            from .review import VisualReviewProvider, candidate_from_content
+            provider = VisualReviewProvider(session.organization, candidate=candidate_from_content(original))
         # Pure local bounds/reference checks run before either checkpoint or spend.
         provider.prepare_request(language=session.language, mode=session.mode, frames=images)
         preflight(session, 1, provider=provider)
@@ -78,7 +104,7 @@ def run_review(job, session, window, context):
         if VisualAnalysisReview.objects.filter(window=current).exists() or current.content != original:
             return 'VISUAL_REVIEW_CHECKPOINT_CHANGED'
         record = VisualAnalysisReview.objects.create(organization_id=job.organization_id, window=current,
-                                                    version=REVIEW_VERSION, state='running')
+                                                    version=version, state='running')
         active.analysis_calls += 1
         active.last_call_at = timezone.now()
         active.save(update_fields=['analysis_calls', 'last_call_at', 'updated_at'])
@@ -87,12 +113,22 @@ def run_review(job, session, window, context):
             result = execute_budgeted(provider, job=job, session=session, frames=images,
                                       context=context, call_key=f'verify:{window.id}')
         context.check()
-        content = worker.validate(result, frames, session, expected_version='3')
+        if version == PAIR_REVIEW_VERSION:
+            from .pair_verification import apply_verdicts
+            content = apply_verdicts(result, original, frames, session)
+        else:
+            content = worker.validate(result, frames, session, expected_version='3')
     except ProviderFailure as error:
         _record_failure(job, session, current, context, error.code)
         return error.code
-    except (InvalidModelOutput, TypeError, ValueError, RecursionError):
-        _record_failure(job, session, current, context, 'VISUAL_REVIEW_OUTPUT_INVALID')
+    except ProcessingFailure as error:
+        if version != PAIR_REVIEW_VERSION or error.code != 'PROVIDER_TIMEOUT':
+            raise
+        _record_failure(job, session, current, context, error.code)
+        return error.code
+    except (InvalidModelOutput, TypeError, ValueError, RecursionError) as error:
+        diagnostic = error.diagnostic if isinstance(error, PairVerificationError) else None
+        _record_failure(job, session, current, context, 'VISUAL_REVIEW_OUTPUT_INVALID', diagnostic=diagnostic)
         return 'VISUAL_REVIEW_OUTPUT_INVALID'
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=job.organization_id)
@@ -109,15 +145,18 @@ def run_review(job, session, window, context):
     return ''
 
 
-def _record_failure(job, session, window, context, code, *, state='failed'):
+def _record_failure(job, session, window, context, code, *, state='failed', diagnostic=None):
     from .worker import active_session
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=job.organization_id)
         context.commit_guard()
         active_session(job, lock=True)
+        version = session.analysis_budget['semantic_review']
         record, _ = VisualAnalysisReview.objects.select_for_update().get_or_create(
-            window_id=window.id, defaults={'organization_id': job.organization_id, 'version': REVIEW_VERSION})
-        if record.state != 'running':
+            window_id=window.id, defaults={'organization_id': job.organization_id, 'version': version})
+        if record.state != 'running' or record.version != version:
             return
         record.state, record.error_code = state, code[:64]
-        record.save(update_fields=['state', 'error_code', 'updated_at'])
+        if diagnostic:
+            record.content = {'validation_diagnostic': diagnostic}
+        record.save(update_fields=['state', 'error_code', 'content', 'updated_at'])

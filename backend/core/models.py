@@ -96,6 +96,7 @@ class WorkingCopy(TenantEntity):
     title = models.CharField(max_length=120)
     purpose = models.CharField(max_length=600)
     language = models.CharField(max_length=5, default='ru', choices=[('ru', 'ru'), ('kk', 'kk'), ('mixed', 'mixed')])
+    recipe = models.JSONField(null=True, blank=True)
     review_requested_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name='+')
     review_requested_at = models.DateTimeField(null=True)
     based_on_version = models.ForeignKey('PublishedVersion', null=True, on_delete=models.PROTECT, related_name='+')

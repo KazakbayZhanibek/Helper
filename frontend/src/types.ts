@@ -33,6 +33,10 @@ export type Step = {
   evidence_transcript_revision?: number | null;
   warning_codes?: string[];
 };
+export type Recipe = {
+  ingredients: string[];
+  servings: number | null;
+};
 export type WorkingCopy = {
   id: string;
   instruction_id: string;
@@ -44,6 +48,7 @@ export type WorkingCopy = {
   title: string;
   purpose: string;
   language: Language;
+  recipe?: Recipe | null;
   steps: Step[];
   source: Source | null;
   return_reason: string;
@@ -57,6 +62,7 @@ export type Version = {
     title: string;
     purpose: string;
     language: Language;
+    recipe?: Recipe;
     steps: Step[];
     source: Source;
   };

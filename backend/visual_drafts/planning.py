@@ -83,13 +83,14 @@ def _completed_coverage_partition(session, parent, children, fingerprints, *, ch
     if type(left) is not int or type(right) is not int or left >= right:
         return False
     parts = []
+    review_version = session.analysis_budget.get('semantic_review')
     for child in children:
         start, end = getattr(child, 'start_ms', None), getattr(child, 'end_ms', None)
         if (child.state != 'completed' or type(start) is not int or type(end) is not int
                 or not left <= start < end <= right
-                or (checking and review_state(child) != 'completed')):
+                or (checking and review_state(child, review_version) != 'completed')):
             return False
-        content = effective_content(child)
+        content = effective_content(child, review_version)
         if (not isinstance(content, dict) or content.get('schema_version') != '3'
                 or content.get('step_format') != 'teaching_v1'
                 or content.get('language') != session.language
@@ -116,11 +117,12 @@ def _completed_coverage_partition(session, parent, children, fingerprints, *, ch
 
 
 def analysis_data(session, *, budget=True):
-    from .review_worker import enabled as review_enabled, review_state
+    from .review_worker import PAIR_REVIEW_VERSION, enabled as review_enabled, review_eligible, review_state
     windows = list(session.analysis_windows.select_related('semantic_review'))
     overview = [window for window in windows if window.parent_id is None]
     refined = [window for window in windows if window.parent_id is not None]
     missing = [{'start_ms': window.start_ms, 'end_ms': window.end_ms} for window in overview if window.state != 'completed']
+    review_version = session.analysis_budget['semantic_review'] if review_enabled(session) else None
 
     def window_data(window):
         data = {'id': str(window.id), 'start_ms': window.start_ms, 'end_ms': window.end_ms,
@@ -132,6 +134,10 @@ def analysis_data(session, *, budget=True):
             diagnostic = stored_diagnostic(window.content.get('validation_diagnostic'))
             if diagnostic:
                 data['validation_diagnostic'] = diagnostic
+        if review_version == PAIR_REVIEW_VERSION and review_eligible(window, review_version):
+            state = review_state(window, review_version)
+            data['semantic_review'] = {'state': state or 'pending',
+                                       'error_code': (window.semantic_review.error_code or None) if state else None}
         return data
 
     result = {
@@ -145,12 +151,13 @@ def analysis_data(session, *, budget=True):
         'unprocessed_ranges': missing,
         'windows': [window_data(window) for window in windows],
     }
-    if review_enabled(session):
-        candidates = [window for window in windows if window.state == 'completed']
+    if review_version:
+        candidates = [window for window in windows if review_eligible(window, review_version)]
+        checked = sum(review_state(window, review_version) == 'completed' for window in candidates)
         result['semantic_review'] = {
-            'strategy': 'v1', 'windows_eligible': len(candidates),
-            'windows_checked': sum(review_state(window) == 'completed' for window in candidates),
-            'windows_unchecked': sum(review_state(window) != 'completed' for window in candidates),
+            'strategy': review_version, 'windows_eligible': len(candidates),
+            'windows_checked': checked,
+            'windows_unchecked': len(candidates) - checked,
         }
     if budget:
         from ai_budget.services import budget_snapshot
@@ -160,7 +167,7 @@ def analysis_data(session, *, budget=True):
 
 def aggregate_content(session, windows, *, stop_code=''):
     """Use refinements only when every child succeeded; retain the overview otherwise."""
-    from .review_worker import enabled as review_enabled, review_state, effective_content
+    from .review_worker import PAIR_REVIEW_VERSION, enabled as review_enabled, review_eligible, review_state, effective_content
     overview = [window for window in windows if window.parent_id is None]
     steps, warnings, observations, gaps = [], [], [], []
     temporal_pairs, temporal_unresolved = [], 0
@@ -171,9 +178,12 @@ def aggregate_content(session, windows, *, stop_code=''):
     checking = review_enabled(session) if hasattr(session, 'mode') else False
     budget = getattr(session, 'analysis_budget', {})
     grounding_pin = budget.get('frame_grounding')
-    if grounding_pin not in (None, 'v1', 'v2', 'v3') or (grounding_pin and (
-            getattr(session, 'mode', None) != 'upload' or budget.get('visual_protocol') != '3'
-            or budget.get('short_action_coverage') != 'v1' or budget.get('semantic_review'))):
+    review_version = budget.get('semantic_review')
+    if (grounding_pin not in (None, 'v1', 'v2', 'v3')
+            or (grounding_pin and (getattr(session, 'mode', None) != 'upload' or budget.get('visual_protocol') != '3'
+                                   or budget.get('short_action_coverage') != 'v1'
+                                   or review_version not in (None, PAIR_REVIEW_VERSION)))
+            or (review_version == PAIR_REVIEW_VERSION and not checking)):
         from media_pipeline.exceptions import ProcessingFailure
         raise ProcessingFailure('VISUAL_PROTOCOL_INVALID', 'Неизвестный режим проверки фактов кадров.')
     preserve_refined_evidence = (getattr(session, 'mode', None) == 'upload'
@@ -190,17 +200,18 @@ def aggregate_content(session, windows, *, stop_code=''):
             refined = _completed_coverage_partition(session, window, children, fingerprints, checking=checking)
         else:
             # Preserve historical selection for unpinned/legacy analysis modes.
-            refined = bool(children) and all(child.state == 'completed' and effective_content(child).get('steps') and not needs_refinement(effective_content(child))
-                                            and (not checking or review_state(child) == 'completed') for child in children)
+            refined = bool(children) and all(child.state == 'completed' and effective_content(child, review_version).get('steps')
+                                             and not needs_refinement(effective_content(child, review_version))
+                                             and (not checking or review_state(child, review_version) == 'completed') for child in children)
         # A partial or failed new set cannot replace a full overview. In the
         # coverage mode, a complete uncertain result must not resurrect older
         # commands merely because those commands were worded confidently.
         if children and not refined:
             unresolved_refinements = True
         selected = children if refined else [window]
-        selected_for_review.extend(selected)
+        selected_for_review.extend(item for item in selected if review_eligible(item, review_version))
         for selected_window in selected:
-            content = deepcopy(effective_content(selected_window))
+            content = deepcopy(effective_content(selected_window, review_version))
             grounding = content.get('frame_grounding')
             if (grounding is not None and not isinstance(grounding, dict)) or (grounding or {}).get('version') != grounding_pin:
                 from media_pipeline.exceptions import ProcessingFailure
@@ -256,19 +267,26 @@ def aggregate_content(session, windows, *, stop_code=''):
     if missing:
         warnings.append({'code': 'incomplete_coverage', 'message': 'Разобрана только часть записи. Непросмотренные интервалы перечислены в результате; готовые наблюдения сохранены.'})
     if checking:
-        checked = sum(review_state(window) == 'completed' for window in selected_for_review)
+        checked = sum(review_state(window, review_version) == 'completed' for window in selected_for_review)
         if checked:
-            warnings.append({'code': 'semantic_review_completed', 'message': f'Повторно сопоставлены с кадрами {checked} фрагментов. Это проверка той же моделью, которая тоже может ошибаться; мастер должен проверить действия и способ выполнения.'})
+            message = (f'Модель повторно сверила действия с их парами снимков в {checked} фрагментах. Мастер проверяет разбор по записи.'
+                       if review_version == PAIR_REVIEW_VERSION else
+                       f'Повторно сопоставлены с кадрами {checked} фрагментов. Это проверка той же моделью, которая тоже может ошибаться; мастер должен проверить действия и способ выполнения.')
+            warnings.append({'code': 'semantic_review_completed', 'message': message})
         if checked < len(selected_for_review):
             warnings.append({'code': 'semantic_review_incomplete', 'message': 'Часть шагов не прошла повторное сопоставление с кадрами: не хватило лимита или проверка не завершилась. Первоначальные предложения сохранены и требуют проверки мастером.'})
     if stop_code:
         if grounding_pin == 'v3' and stop_code in {'VISUAL_OUTPUT_INVALID', 'MODEL_OUTPUT_INVALID', 'VISUAL_RESPONSE_INCOMPLETE'}:
             warnings.append({'code': 'analysis_interrupted', 'message': 'ИИ вернул некорректный или незавершённый ответ. Чтобы не тратить бюджет на повторение ошибки, оставшиеся фрагменты не отправлены; проверьте их вручную. Успешные результаты сохранены.'})
         else:
-            warnings.append({'code': 'budget_limit_reached' if stop_code.startswith('AI_BUDGET') or stop_code == 'AI_CALL_LIMIT' else 'analysis_interrupted', 'message': 'Дополнительные обращения остановлены. Сохранены только уже проверенные ответы; непроверенные моменты требуют просмотра человеком.'})
+            message = ('Дополнительные обращения остановлены. Сохранён доступный черновик. Сопоставьте его с записью.'
+                       if review_version == PAIR_REVIEW_VERSION else
+                       'Дополнительные обращения остановлены. Сохранены только уже проверенные ответы; непроверенные моменты требуют просмотра человеком.')
+            warnings.append({'code': 'budget_limit_reached' if stop_code.startswith('AI_BUDGET') or stop_code == 'AI_CALL_LIMIT' else 'analysis_interrupted', 'message': message})
     if unresolved_refinements:
         warnings.append({'code': 'refinement_unresolved', 'message': 'Дополнительный просмотр не дал достаточно уверенного уточнения. Сохранено исходное наблюдение; проверьте этот момент по видео.'})
-    unresolved = any(window.state == 'completed' and needs_refinement(effective_content(window)) and not any(child.parent_id == window.id for child in windows) for window in overview)
+    unresolved = any(window.state == 'completed' and needs_refinement(effective_content(window, review_version))
+                     and not any(child.parent_id == window.id for child in windows) for window in overview)
     if unresolved:
         warnings.append({'code': 'refinement_incomplete', 'message': 'Для части неясных моментов дополнительный просмотр не завершён в пределах лимита. Проверьте эти места вручную.'})
     if len(unique_steps) > 30:
